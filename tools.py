@@ -36,7 +36,7 @@ def load_dataset(file_path):
 def draw_heatmap(data, heatmap_path):
     # Create a heatmap using matplotlib and your desired colormap
     plt.figure(figsize=(10, 10))
-    plt.imshow(data, cmap='inferno')  # Replace 'inferno' with your desired colormap
+    plt.imshow(data, cmap='inferno', vmin=0, vmax=1)
     plt.colorbar()
     # Save the heatmap to a file
     plt.savefig(heatmap_path)

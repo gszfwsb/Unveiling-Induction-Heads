@@ -13,17 +13,18 @@ from task import generate_sequence_with_causal_structure
 from tools import *
 import argparse
 import wandb
+import os
+
+
 
 def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
     return criterion
 
-def train(model,inputs,targets,criterion, args,save_file_path,epoch):
+def train(model,inputs,targets,criterion, args):
     # Stage 1: Train only the first layer's A parameter
     optimizer = optim.SGD([model.layers[0].A], lr=args.lr[0])
     scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.time[0])
-
-
     for t in range(args.time[0]):
         optimizer.zero_grad()
         logits = model(inputs) # [bs, T, S]
@@ -49,9 +50,7 @@ def train(model,inputs,targets,criterion, args,save_file_path,epoch):
         scheduler.step()
     
     # Output the trained parameters
-    # A1 = model.layers[0].A.data
-    # A2 = model.layers[1].A.data
-    return loss1, loss2
+    return loss2
 
 def get_dataset(S, T, alpha, bs):
     x, y, pi, mu_pi = generate_sequence_with_causal_structure(S, T, alpha, bs)
@@ -63,17 +62,19 @@ parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=10)
 parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--n-layers',type=int, default=2)
-parser.add_argument('--time',type=list, default=[100, 100])
-parser.add_argument('--lr',type=list, default=[1, 1])
+parser.add_argument('--time',type=list, default=[10, 10])
+parser.add_argument('--lr',type=list, default=[100,100])
 parser.add_argument('--n-heads',type=list,default=[1,1])
 parser.add_argument('--d-out',type=int, default=10)
-parser.add_argument('--batch-size',type=int, default=1000)
+parser.add_argument('--batch-size',type=int, default=10000)
 parser.add_argument('--alpha',type=float, default=0.1)
+parser.add_argument('--beta',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-epoch',type=int,default=2**17)
-parser.add_argument('--n-sample',type=int,default=10000)
+parser.add_argument('--n-epoch',type=int,default=10000)
+parser.add_argument('--n-sample',type=int,default=100000)
 parser.add_argument('--device',type=str, default='cuda:1')
+parser.add_argument('--enable-wandb',type=bool,default=True)
 
 args = parser.parse_args()
 
@@ -88,21 +89,36 @@ n_epoch = args.n_epoch
 n_sample = args.n_sample
 bs = args.batch_size
 alpha = args.alpha  # Dirichlet parameter
+beta =args.beta
 ignore_idx = args.ignore_idx
 n_sample = args.n_sample
 
+if not args.enable_wandb:
+    os.environ['WANDB_MODE'] = 'disabled'
+
 # wandb init
-wandb.init(project='In-Context-Learning', entity='shaobowang', name=f'Task1_epoch{n_epoch}')
+wandb.init(project='In-Context-Learning', 
+           entity='shaobowang', 
+           name=f'Task1_epoch{n_epoch}',
+           config=vars(args)
+        )
 
 
 # Define the file paths
 dataset_file_path = f'/data/wangshaobo/data/Task1_data_seed{args.seed}_n{n_sample}_alpha{alpha}.pt'  # Specify your path here
-save_file_path = f'results/Task1/{str(n_epoch).zfill(5)}'
+save_file_path = f'results/Task1/{str(n_epoch)}'
 makedirs(save_file_path)
 
 # Generate the DisentangledTransformer
 model = DisentangledTransformer(S, n_heads, n_layers, T, d_out)
 model.to(device)
+
+# reinit the params
+with torch.no_grad():
+    model.layers[0].A.fill_(0.0)
+    A2 = torch.zeros(2*(S+T), 2*(S+T))
+    A2[:S, S+T:S+T+S] = torch.eye(S)
+    model.layers[1].A[0] = torch.nn.Parameter(A2)
 
 # Generate the population loss
 criterion = population_loss(args.ignore_idx)
@@ -110,6 +126,7 @@ criterion = population_loss(args.ignore_idx)
 # Generate the sequence with causal structure
 # Check if the dataset is already cached
 if not os.path.isfile(dataset_file_path):
+    print('generate and save the dataset')
     # If not, generate and save the dataset
     X, Y = get_dataset(S, T, alpha, n_sample) # [n_sample, T, S], [n_sample, S]
     save_dataset(X, Y, dataset_file_path)
@@ -123,37 +140,31 @@ dataloader = DataLoader(dataset, batch_size=bs, shuffle=False)
 
 pbar = tqdm(list(range(n_epoch)),mininterval=1,ncols=100)
 for epoch in pbar:
-    loss1_total, loss2_total = 0, 0
+    loss_total = 0.
     size = 0
     for i, (x,y) in enumerate(dataloader):
+        # assert not (torch.isnan(x).any() or torch.isnan(x).any())
         x, y = x.to(device), y.to(device)
-        loss1, loss2 = train(model, x, y, criterion, args, save_file_path,epoch)
-        loss1_total += loss1.item()
-        loss2_total += loss2.item()
+        loss = train(model, x, y, criterion, args)
+        loss_total += loss.item()
         size += x.size(0)
-    loss1_total /= size
-    loss2_total /= size
-    pbar.set_description(f'l1:{loss1_total},l2:{loss2_total}')
+    loss_total /= size
+    pbar.set_description(f'loss:{loss_total:.10f}')
     
+
     wandb.log({
-        'Stage 1 Loss': loss1_total,
-        'Stage 2 Loss': loss2_total,
-    })  
+        'Loss': loss_total,
+        # 'A1': wandb.Image(heatmap_path1),
+        # 'A2': wandb.Image(heatmap_path2)
+    })
+    
     # Log the loss and heatmap of A1 after every update
-    if epoch in [2**i for i in range(20)]:
-        heatmap_path = f"{save_file_path}/heatmap_A1_{epoch}.png"
-        draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path)
-        wandb.log({
-            'A1': wandb.Image(heatmap_path)
-        })
-        
-        heatmap_path = f"{save_file_path}/heatmap_A2_{epoch}.png"
-        draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path)
-        wandb.log({
-            'A2': wandb.Image(heatmap_path)
-        })
-   
-    if epoch in [2**i for i in range(20)]:
+    if epoch % 1 == 0:   
+        heatmap_path1 = f"{save_file_path}/heatmap_A1_{epoch}.png"
+        heatmap_path2 = f"{save_file_path}/heatmap_A2_{epoch}.png"
+        draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
+        draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
+    
         torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
         torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
     

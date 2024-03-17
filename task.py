@@ -2,7 +2,7 @@ import torch
 import torch.distributions as dist
 import networkx as nx
 import matplotlib.pyplot as plt
-
+from tqdm import tqdm
 
 # Function to sample a Markov chain transition matrix π where each row is sampled i.i.d from Dir(α · 1_S)
 def sample_markov_chain(S, alpha):
@@ -22,16 +22,18 @@ def stationary_distribution(transition_matrix):
     return stationary_dist
 
 # Function to generate a random sequence with causal structure
-def generate_sequence_with_causal_structure(S, T, alpha, batch_size=1):
+def generate_sequence_with_causal_structure(S, T, alpha, size=1):
     # Sample a Markov chain transition matrix π from the prior Pπ
     pi = sample_markov_chain(S, alpha)
     # Compute the stationary distribution µπ of π
     mu_pi = stationary_distribution(pi)
     
     # Initialize the sequence
-    sequences = torch.empty(batch_size, T, dtype=torch.long)
-    s_T_plus_1 = torch.empty(batch_size, dtype=torch.long)
-    for b in range(batch_size):
+    sequences = torch.empty(size, T, dtype=torch.long)
+    s_T_plus_1 = torch.empty(size, dtype=torch.long)
+    pbar = tqdm(range(size),ncols=100,mininterval=1)
+    pbar.set_description('generating data...')
+    for b in pbar:
         # Sample the first element s1 from the stationary distribution µπ if p(1) is empty
         sequences[b,0] = dist.Categorical(probs=mu_pi).sample()
         
