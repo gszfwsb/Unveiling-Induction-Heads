@@ -169,13 +169,23 @@ for epoch in pbar:
     if epoch % 10 == 0:   
         heatmap_path1 = f"{save_file_path}/heatmap_A1_{epoch}.png"
         heatmap_path2 = f"{save_file_path}/heatmap_A2_{epoch}.png"
+        heatmap_W = f"{save_file_path}/heatmap_WO_{epoch}.png"
         draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
         draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
+        draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W)
+        
     if epoch % 50 == 0:   
         torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
         torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
+        torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/A2_{epoch}.pt')
     
 
+heatmap_path1 = f"{save_file_path}/heatmap_A1.png"
+heatmap_path2 = f"{save_file_path}/heatmap_A2.png"
+heatmap_W = f"{save_file_path}/heatmap_WO.png"
+draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
+draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
+draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W)
 torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1.pt')
 torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2.pt')
 
