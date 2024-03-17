@@ -102,7 +102,8 @@ wandb.init(project='In-Context-Learning',
 
 
 # Define the file paths
-root_path = '/cpfs01/user/luanqi.p/wangshaobo/data'
+# root_path = '/cpfs01/user/luanqi.p/wangshaobo/data'
+root_path = '/data/wangshaobo/data'
 dataset_file_path = f'{root_path}/Task1_data_seed{args.seed}_n{n_sample}_alpha{alpha}.pt'  # Specify your path here
 save_file_path = f'results/Task1/{n_epoch}_{bs}_{alpha}_{beta}'
 makedirs(save_file_path)

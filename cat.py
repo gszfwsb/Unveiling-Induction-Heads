@@ -46,7 +46,6 @@ class CausalSelfAttention(nn.Module):
         self.d_out = d_out
         self.scale = (d) ** -0.5
         self.A = nn.Parameter(torch.Tensor(heads, d, d))
-        self.w_out = nn.Linear(T, d, bias=False)
 
     def forward(self, h): 
         B, T, d = h.size() # [bs, T, d]
@@ -60,10 +59,10 @@ class CausalSelfAttention(nn.Module):
         attn = F.softmax(scores, dim=-1) # [bs, heads, T, T]
 
         # Apply attention to V
-        out = self.w_out(attn) # [bs, heads, T, d]
+        attn = torch.matmul(attn, h) # [bs, heads, T, d]
         # Concatenate the attention outputs from all heads
-        assert out.shape == (B,self.heads,T,d)
-        return out.view(B, T, -1)
+        assert attn.shape == (B,self.heads,T,d)
+        return attn.view(B, T, -1)
 
 class DisentangledTransformer(nn.Module):
     def __init__(self, S, n_heads, n_layers, T, d_out):
