@@ -84,7 +84,7 @@ if not args.enable_wandb:
 # wandb init
 wandb.init(project='In-Context-Learning', 
            entity='shaobowang', 
-           name=f'Task1_epoch{n_epoch}',
+           name=f'Task1_epoch{n_epoch}_bs{bs}_a{alpha}_b{beta}',
            config=vars(args)
         )
 
