@@ -23,9 +23,7 @@ def population_loss(ignore_idx):
 
 def train(model,inputs,targets,criterion, args, optimizers, schedulers):
     n_stage = len(optimizers)
-    # optimizer = optim.SGD([model.layers[0].A], lr=args.lr[0])
-    # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.time[0])
-    # Stage i: Train only the first layer's A parameter
+    # Stage i: Train only the ith layer's A parameter
     for stage in range(n_stage):
         for t in range(args.time[stage]):
             optimizers[stage].zero_grad()
@@ -37,21 +35,6 @@ def train(model,inputs,targets,criterion, args, optimizers, schedulers):
             # Update the learning rate
             schedulers[stage].step()
 
-    # # Stage 2: Train only the second layer's A parameter
-    # optimizer = optim.SGD([model.layers[1].A], lr=args.lr[1])
-    # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.time[1])
-    
-    # for t in range(args.time[1]):
-    #     optimizer.zero_grad()
-    #     logits = model(inputs) # [bs, T, S]
-    #     logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
-    #     loss2 = criterion(logits, targets)
-    #     loss2.backward()
-    #     optimizer.step()
-    #     # Update the learning rate
-    #     scheduler.step()
-    
-    # Output the trained parameters
     return loss
 
 def get_dataset(S, T, alpha, bs):
@@ -68,14 +51,14 @@ parser.add_argument('--time',type=list, default=[10, 10])
 parser.add_argument('--lr',type=list, default=[1,1])
 parser.add_argument('--n-heads',type=list,default=[1,1])
 parser.add_argument('--d-out',type=int, default=10)
-parser.add_argument('--batch-size',type=int, default=256)
+parser.add_argument('--batch-size',type=int, default=1024)
 parser.add_argument('--alpha',type=float, default=0.1)
 parser.add_argument('--beta',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
 parser.add_argument('--n-epoch',type=int,default=500)
 parser.add_argument('--n-sample',type=int,default=100000)
-parser.add_argument('--device',type=str, default='cuda:1')
+parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=True)
 
 args = parser.parse_args()
@@ -107,7 +90,8 @@ wandb.init(project='In-Context-Learning',
 
 
 # Define the file paths
-dataset_file_path = f'/data/wangshaobo/data/Task1_data_seed{args.seed}_n{n_sample}_alpha{alpha}.pt'  # Specify your path here
+root_path = '/cpfs01/user/luanqi.p/wangshaobo/data'
+dataset_file_path = f'{root_path}/Task1_data_seed{args.seed}_n{n_sample}_alpha{alpha}.pt'  # Specify your path here
 save_file_path = f'results/Task1/{str(n_epoch)}'
 makedirs(save_file_path)
 
