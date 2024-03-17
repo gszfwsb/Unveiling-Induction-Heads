@@ -21,33 +21,6 @@ def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
     return criterion
 
-def train(model,inputs,targets,criterion, args, optimizers, schedulers):
-    n_stage = len(optimizers)
-    device = inputs.device
-    # Stage i: Train only the ith layer's A parameter
-    for stage in range(n_stage):
-        for t in range(args.time[stage]):
-            optimizers[stage].zero_grad()
-            logits = model(inputs) # [bs, T, S]
-            logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
-            loss = criterion(logits, targets)
-            loss.backward()
-            optimizers[stage].step()
-            # Update the learning rate
-            schedulers[stage].step()
-        
-        # clip the grads
-        if stage == 0:
-            A0_new = torch.zeros_like(model.layers[0].A.data).to(device)
-            A0_new[:,-T:,-T:] = model.layers[0].A.data[:,-T:,-T:]
-            model.layers[0].A.data = A0_new
-        elif stage == 1:
-            A1_new = torch.zeros_like(model.layers[1].A.data).to(device)
-            A1_new[:, :S, S+T:S+T+S] = model.layers[1].A.data[:, :S, S+T:S+T+S]
-            model.layers[1].A.data = A1_new
-
-    return loss
-
 def get_dataset(S, T, alpha, bs):
     x, y, pi, mu_pi = generate_sequence_with_causal_structure(S, T, alpha, bs)
     x = F.one_hot(x, num_classes=S).float()  # (bs, T, S) S word emb indices 
@@ -59,8 +32,7 @@ parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=10)
 parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--n-layers',type=int, default=2)
-parser.add_argument('--time',type=list, default=[10, 10])
-parser.add_argument('--lr',type=list, default=[1,1])
+parser.add_argument('--lr',type=float, default=1)
 parser.add_argument('--n-heads',type=list,default=[1,1])
 parser.add_argument('--d-out',type=int, default=10)
 parser.add_argument('--batch-size',type=int, default=8192)
@@ -68,7 +40,7 @@ parser.add_argument('--alpha',type=float, default=0.1)
 parser.add_argument('--beta',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-epoch',type=int,default=100)
+parser.add_argument('--n-epoch',type=int,default=500)
 parser.add_argument('--n-sample',type=int,default=100000)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=True)
@@ -96,7 +68,7 @@ if not args.enable_wandb:
 # wandb init
 wandb.init(project='In-Context-Learning', 
            entity='shaobowang', 
-           name=f'Task1_epoch{n_epoch}_bs{bs}_a{alpha}_b{beta}',
+           name=f'Task1_once_epoch{n_epoch}_bs{bs}_a{alpha}_b{beta}',
            config=vars(args)
         )
 
@@ -104,7 +76,7 @@ wandb.init(project='In-Context-Learning',
 # Define the file paths
 root_path = '/data/wangshaobo/data'
 dataset_file_path = f'{root_path}/Task1_data_seed{args.seed}_n{n_sample}_alpha{alpha}.pt'  # Specify your path here
-save_file_path = f'results/Task1/{n_epoch}_{bs}_{alpha}_{beta}'
+save_file_path = f'results/Task1_once/{n_epoch}_{bs}_{alpha}_{beta}'
 makedirs(save_file_path)
 
 # Generate the DisentangledTransformer
@@ -134,13 +106,8 @@ else:
     print('already cache, load from disk!')
 
 # define optimizers and schedulars
-optimizers = []
-schedulers = []
-for stage in range(n_layers):
-    optimizer = optim.SGD([model.layers[stage].A], lr=args.lr[stage])
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=2**17)
-    optimizers.append(optimizer)
-    schedulers.append(scheduler)
+optimizer = optim.SGD(model.parameters(), lr=args.lr)
+scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=2**17)
 
 dataset = TensorDataset(X, Y)
 dataloader = DataLoader(dataset, batch_size=bs, shuffle=False)
@@ -152,7 +119,14 @@ for epoch in pbar:
     for i, (x,y) in enumerate(dataloader):
         # assert not (torch.isnan(x).any() or torch.isnan(x).any())
         x, y = x.to(device), y.to(device)
-        loss = train(model, x, y, criterion, args, optimizers, schedulers)
+        optimizer.zero_grad()
+        logits = model(x) # [bs, T, S]
+        logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
+        loss = criterion(logits, y)
+        loss.backward()
+        optimizer.step()
+        # Update the learning rate
+        scheduler.step()
         loss_total += loss.item()
         size += x.size(0)
     loss_total /= size
