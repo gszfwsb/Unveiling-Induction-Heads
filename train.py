@@ -21,36 +21,38 @@ def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
     return criterion
 
-def train(model,inputs,targets,criterion, args):
-    # Stage 1: Train only the first layer's A parameter
-    optimizer = optim.SGD([model.layers[0].A], lr=args.lr[0])
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.time[0])
-    for t in range(args.time[0]):
-        optimizer.zero_grad()
-        logits = model(inputs) # [bs, T, S]
-        logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
-        loss1 = criterion(logits, targets)
-        loss1.backward()
-        optimizer.step()
-        # Update the learning rate
-        scheduler.step()
+def train(model,inputs,targets,criterion, args, optimizers, schedulers):
+    n_stage = len(optimizers)
+    # optimizer = optim.SGD([model.layers[0].A], lr=args.lr[0])
+    # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.time[0])
+    # Stage i: Train only the first layer's A parameter
+    for stage in range(n_stage):
+        for t in range(args.time[stage]):
+            optimizers[stage].zero_grad()
+            logits = model(inputs) # [bs, T, S]
+            logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
+            loss = criterion(logits, targets)
+            loss.backward()
+            optimizers[stage].step()
+            # Update the learning rate
+            schedulers[stage].step()
 
-    # Stage 2: Train only the second layer's A parameter
-    optimizer = optim.SGD([model.layers[1].A], lr=args.lr[1])
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.time[1])
+    # # Stage 2: Train only the second layer's A parameter
+    # optimizer = optim.SGD([model.layers[1].A], lr=args.lr[1])
+    # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.time[1])
     
-    for t in range(args.time[1]):
-        optimizer.zero_grad()
-        logits = model(inputs) # [bs, T, S]
-        logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
-        loss2 = criterion(logits, targets)
-        loss2.backward()
-        optimizer.step()
-        # Update the learning rate
-        scheduler.step()
+    # for t in range(args.time[1]):
+    #     optimizer.zero_grad()
+    #     logits = model(inputs) # [bs, T, S]
+    #     logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
+    #     loss2 = criterion(logits, targets)
+    #     loss2.backward()
+    #     optimizer.step()
+    #     # Update the learning rate
+    #     scheduler.step()
     
     # Output the trained parameters
-    return loss2
+    return loss
 
 def get_dataset(S, T, alpha, bs):
     x, y, pi, mu_pi = generate_sequence_with_causal_structure(S, T, alpha, bs)
@@ -63,15 +65,15 @@ parser.add_argument('--vocab-size',type=int,default=10)
 parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--n-layers',type=int, default=2)
 parser.add_argument('--time',type=list, default=[10, 10])
-parser.add_argument('--lr',type=list, default=[100,100])
+parser.add_argument('--lr',type=list, default=[1,1])
 parser.add_argument('--n-heads',type=list,default=[1,1])
 parser.add_argument('--d-out',type=int, default=10)
-parser.add_argument('--batch-size',type=int, default=2**8)
+parser.add_argument('--batch-size',type=int, default=256)
 parser.add_argument('--alpha',type=float, default=0.1)
 parser.add_argument('--beta',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-epoch',type=int,default=10000)
+parser.add_argument('--n-epoch',type=int,default=500)
 parser.add_argument('--n-sample',type=int,default=100000)
 parser.add_argument('--device',type=str, default='cuda:1')
 parser.add_argument('--enable-wandb',type=bool,default=True)
@@ -135,6 +137,15 @@ else:
     X, Y = load_dataset(dataset_file_path)
     print('already cache, load from disk!')
 
+# define optimizers and schedulars
+optimizers = []
+schedulers = []
+for stage in range(n_layers):
+    optimizer = optim.SGD([model.layers[stage].A], lr=args.lr[stage])
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=2**17)
+    optimizers.append(optimizer)
+    schedulers.append(scheduler)
+
 dataset = TensorDataset(X, Y)
 dataloader = DataLoader(dataset, batch_size=bs, shuffle=False)
 
@@ -145,7 +156,7 @@ for epoch in pbar:
     for i, (x,y) in enumerate(dataloader):
         # assert not (torch.isnan(x).any() or torch.isnan(x).any())
         x, y = x.to(device), y.to(device)
-        loss = train(model, x, y, criterion, args)
+        loss = train(model, x, y, criterion, args, optimizers, schedulers)
         loss_total += loss.item()
         size += x.size(0)
     loss_total /= size
@@ -159,12 +170,12 @@ for epoch in pbar:
     })
     
     # Log the loss and heatmap of A1 after every update
-    if epoch % 1 == 0:   
+    if epoch % 10 == 0:   
         heatmap_path1 = f"{save_file_path}/heatmap_A1_{epoch}.png"
         heatmap_path2 = f"{save_file_path}/heatmap_A2_{epoch}.png"
         draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
         draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
-    
+    if epoch % 50 == 0:   
         torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
         torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
     
