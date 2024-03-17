@@ -23,6 +23,7 @@ def population_loss(ignore_idx):
 
 def train(model,inputs,targets,criterion, args, optimizers, schedulers):
     n_stage = len(optimizers)
+    device = inputs.device
     # Stage i: Train only the ith layer's A parameter
     for stage in range(n_stage):
         for t in range(args.time[stage]):
@@ -34,6 +35,16 @@ def train(model,inputs,targets,criterion, args, optimizers, schedulers):
             optimizers[stage].step()
             # Update the learning rate
             schedulers[stage].step()
+        
+        # clip the grads
+        if stage == 0:
+            A0_new = torch.zeros_like(model.layers[0].A.data).to(device)
+            A0_new[:,-T:,-T:] = model.layers[0].A.data[:,-T:,-T:]
+            model.layers[0].A.data = A0_new
+        elif stage == 1:
+            A1_new = torch.zeros_like(model.layers[1].A.data).to(device)
+            A1_new[:, :S, S+T:S+T+S] = model.layers[1].A.data[:, :S, S+T:S+T+S]
+            model.layers[1].A.data = A1_new
 
     return loss
 
@@ -42,6 +53,7 @@ def get_dataset(S, T, alpha, bs):
     x = F.one_hot(x, num_classes=S).float()  # (bs, T, S) S word emb indices 
     y = F.one_hot(y, num_classes=S)  # (bs, S) S word emb indices
     return x, y
+
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=10)
