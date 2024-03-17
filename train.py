@@ -71,7 +71,7 @@ parser.add_argument('--ignore-idx',type=int, default=-100)
 parser.add_argument('--n-epoch',type=int,default=100)
 parser.add_argument('--n-sample',type=int,default=100000)
 parser.add_argument('--device',type=str, default='cuda:0')
-parser.add_argument('--enable-wandb',type=bool,default=True)
+parser.add_argument('--enable-wandb',type=bool,default=False)
 
 args = parser.parse_args()
 
@@ -114,7 +114,7 @@ model.to(device)
 
 # reinit the params
 with torch.no_grad():
-    model.layers[0].A.fill_(0.0)
+    model.layers[0].A[0].fill_(0.0)
     A2 = torch.zeros(2*(S+T), 2*(S+T))
     A2[:S, S+T:S+T+S] = torch.eye(S)
     model.layers[1].A[0] = torch.nn.Parameter(A2)

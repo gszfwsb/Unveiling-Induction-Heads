@@ -59,7 +59,7 @@ class CausalSelfAttention(nn.Module):
         attn = F.softmax(scores, dim=-1) # [bs, heads, T, T]
 
         # Apply attention to V
-        attn = torch.matmul(attn, h) # [bs, heads, T, d]
+        attn = torch.einsum("bhtt,btd->bhtd",attn, h) # [bs, heads, T, d]
         # Concatenate the attention outputs from all heads
         assert attn.shape == (B,self.heads,T,d)
         return attn.view(B, T, -1)
