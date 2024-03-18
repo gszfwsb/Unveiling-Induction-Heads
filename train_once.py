@@ -37,7 +37,6 @@ parser.add_argument('--n-heads',type=list,default=[1,1])
 parser.add_argument('--d-out',type=int, default=10)
 parser.add_argument('--batch-size',type=int, default=8192)
 parser.add_argument('--alpha',type=float, default=0.1)
-parser.add_argument('--beta',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
 parser.add_argument('--n-epoch',type=int,default=500)
@@ -58,7 +57,6 @@ n_epoch = args.n_epoch
 n_sample = args.n_sample
 bs = args.batch_size
 alpha = args.alpha  # Dirichlet parameter
-beta =args.beta
 ignore_idx = args.ignore_idx
 n_sample = args.n_sample
 
@@ -68,7 +66,7 @@ if not args.enable_wandb:
 # wandb init
 wandb.init(project='In-Context-Learning', 
            entity='shaobowang', 
-           name=f'Task1_once_epoch{n_epoch}_bs{bs}_a{alpha}_b{beta}',
+           name=f'Task1_once_epoch{n_epoch}_bs{bs}_a{alpha}',
            config=vars(args)
         )
 
@@ -76,19 +74,12 @@ wandb.init(project='In-Context-Learning',
 # Define the file paths
 root_path = '/data/wangshaobo/data'
 dataset_file_path = f'{root_path}/Task1_data_seed{args.seed}_n{n_sample}_alpha{alpha}.pt'  # Specify your path here
-save_file_path = f'results/Task1_once/{n_epoch}_{bs}_{alpha}_{beta}'
+save_file_path = f'results/Task1_once/{n_epoch}_{bs}_{alpha}'
 makedirs(save_file_path)
 
 # Generate the DisentangledTransformer
 model = DisentangledTransformer(S, n_heads, n_layers, T, d_out)
 model.to(device)
-
-# reinit the params
-with torch.no_grad():
-    model.layers[0].A.fill_(0.0)
-    A2 = torch.zeros(2*(S+T), 2*(S+T))
-    A2[:S, S+T:S+T+S] = torch.eye(S)
-    model.layers[1].A[0] = torch.nn.Parameter(A2)
 
 # Generate the population loss
 criterion = population_loss(args.ignore_idx)
@@ -143,15 +134,26 @@ for epoch in pbar:
     if epoch % 10 == 0:   
         heatmap_path1 = f"{save_file_path}/heatmap_A1_{epoch}.png"
         heatmap_path2 = f"{save_file_path}/heatmap_A2_{epoch}.png"
+        heatmap_W = f"{save_file_path}/heatmap_WO_{epoch}.png"
         draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
         draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
+        draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-0.1,vmax=0.1)
+        
     if epoch % 50 == 0:   
         torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
         torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
+        torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
     
 
+heatmap_path1 = f"{save_file_path}/heatmap_A1.png"
+heatmap_path2 = f"{save_file_path}/heatmap_A2.png"
+heatmap_W = f"{save_file_path}/heatmap_WO.png"
+draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
+draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
+draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-0.1,vmax=0.1)
 torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1.pt')
 torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2.pt')
+torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
 
 # Finish the wandb run
 wandb.finish()

@@ -189,7 +189,7 @@ draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
 draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-0.1,vmax=0.1)
 torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1.pt')
 torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2.pt')
-torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
+torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO.pt')
 
 # Finish the wandb run
 wandb.finish()
