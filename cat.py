@@ -3,45 +3,38 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, d,T,d_out, heads):
+    def __init__(self, d, d_out, heads):
         super().__init__()
         self.d = d
         self.heads = heads
         self.d_out = d_out
         self.A = nn.Parameter(torch.Tensor(heads, d, d))
-        nn.init.xavier_uniform_(self.A)
+        nn.init.zeros_(self.A)
 
     def forward(self, h): 
         B, T, d = h.size() # [bs, T, d]
-        assert self.A.shape == (self.heads, d, d)
-        # einsum failed?
-        # scores1 = torch.einsum('btd,hdd,bdT->bhtT', h, self.A, h.transpose(-2,-1))
-        scores = torch.zeros((B, self.heads, T, T)).to(h.device)
+        outs = []
         for i in range(self.heads):
-            score = torch.matmul(torch.matmul(h, self.A[i]), h.transpose(-2,-1))
-            scores[:,i] =  score# [bs, T, T], 
-        # assert (scores == scores1).all()
-        mask = torch.tril(torch.ones(T, T)).to(h.device).unsqueeze(0).unsqueeze(0) # [1, 1, T, T]
-        scores = scores.masked_fill(mask == 0, float('-inf')) # Apply causal mask
-        attn = F.softmax(scores, dim=-1) # [bs, heads, T, T]
-
-        out = torch.zeros((B, self.heads, T, d)).to(h.device)
-        for i in range(self.heads):
-            out[:,i] = torch.matmul(attn[:,i],h)
-        # einsum failed?
-        out1 = torch.matmul(attn, h.unsqueeze(1))
-        return out.view(B, T, -1)
+            scores = torch.matmul(torch.matmul(h, self.A[i]), h.transpose(-2,-1)) # [bs, T, d]
+            mask = torch.tril(torch.ones(T, T)).to(h.device).unsqueeze(0) # [1, T, T]
+            scores = scores.masked_fill(mask == 0, float('-inf')) # Apply causal mask
+            attn = F.softmax(scores, dim=-1) # [bs, T, T]
+            out = torch.matmul(attn, h) # [bs, T, d]
+            outs.append(out) # [head, bs, T, d]
+        outs = torch.stack(outs).permute(1, 2, 0, 3)
+        assert outs.shape == (B, T, self.heads, d)
+        return outs.reshape(B, T, -1)  # [bs, T, h*d]
 
 class DisentangledTransformer(nn.Module):
     def __init__(self, S, n_heads, n_layers, T, d_out):
         super().__init__()
         self.get_dims(S+T,n_heads,n_layers)
         self.layers = nn.ModuleList([
-            CausalSelfAttention(self.dims[_], T, self.dims[_+1], n_heads[_],) 
+            CausalSelfAttention(self.dims[_], self.dims[_+1], n_heads[_],) 
             for _ in range(n_layers)
         ])
-        self.output_layer = nn.Linear(self.dims[-1], d_out) # d_L, d_out
-        # print(self.dims)
+        self.output_layer = nn.Linear(self.dims[-1], d_out, bias=False) # d_L, d_out
+        nn.init.zeros_(self.output_layer.weight.data)
 
     def get_dims(self, d0, n_heads, n_layers):
         self.dims = [d0]
