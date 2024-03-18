@@ -71,7 +71,7 @@ parser.add_argument('--ignore-idx',type=int, default=-100)
 parser.add_argument('--n-epoch',type=int,default=100)
 parser.add_argument('--n-sample',type=int,default=100000)
 parser.add_argument('--device',type=str, default='cuda:0')
-parser.add_argument('--enable-wandb',type=bool,default=False)
+parser.add_argument('--enable-wandb',type=bool,default=True)
 
 args = parser.parse_args()
 
@@ -102,8 +102,8 @@ wandb.init(project='In-Context-Learning',
 
 
 # Define the file paths
-# root_path = '/cpfs01/user/luanqi.p/wangshaobo/data'
-root_path = '/data/wangshaobo/data'
+root_path = '/cpfs01/user/luanqi.p/wangshaobo/data'
+# root_path = '/data/wangshaobo/data'
 dataset_file_path = f'{root_path}/Task1_data_seed{args.seed}_n{n_sample}_alpha{alpha}.pt'  # Specify your path here
 save_file_path = f'results/Task1/{n_epoch}_{bs}_{alpha}_{beta}'
 makedirs(save_file_path)
@@ -173,12 +173,12 @@ for epoch in pbar:
         heatmap_W = f"{save_file_path}/heatmap_WO_{epoch}.png"
         draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
         draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
-        draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W)
+        draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-0.1,vmax=0.1)
         
     if epoch % 50 == 0:   
         torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
         torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
-        torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/A2_{epoch}.pt')
+        torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
     
 
 heatmap_path1 = f"{save_file_path}/heatmap_A1.png"
@@ -186,9 +186,10 @@ heatmap_path2 = f"{save_file_path}/heatmap_A2.png"
 heatmap_W = f"{save_file_path}/heatmap_WO.png"
 draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
 draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
-draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W)
+draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-0.1,vmax=0.1)
 torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1.pt')
 torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2.pt')
+torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
 
 # Finish the wandb run
 wandb.finish()
