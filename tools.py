@@ -37,9 +37,9 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
     # Create a heatmap using matplotlib and your desired colormap
     plt.figure(figsize=(10, 10))
     plt.imshow(data, cmap='inferno', vmin=vmin, vmax=vmax)
+    plt.tight_layout()
     plt.colorbar()
     # Save the heatmap to a file
-    plt.tight_layout()
     plt.savefig(heatmap_path)
     # Close plt figure to free memory
     plt.close()
@@ -54,8 +54,8 @@ def visualize(model, save_file_path, epoch=-1):
         heatmap_path1 = f"{save_file_path}/heatmap_A1_{epoch}.png"
         heatmap_path2 = f"{save_file_path}/heatmap_A2_{epoch}.png"
         heatmap_W = f"{save_file_path}/heatmap_WO_{epoch}.png"
-    draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1,vmin=-.2,vmax=.2)
-    draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2,vmin=-.2,vmax=.2)
+    draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1,vmin=-.2,vmax=1)
+    draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2,vmin=-.2,vmax=1)
     draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-.4,vmax=.4)
 
 def save(model, save_file_path, epoch=-1):

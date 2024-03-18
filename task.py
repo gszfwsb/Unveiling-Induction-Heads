@@ -47,14 +47,3 @@ def generate_sequence_with_causal_structure(S, T, alpha, size=1):
         sequences[b,T-1] = s_T
         # Return the input sequence x = s_{1:T} and the target y = s_{T+1}
     return sequences, s_T_plus_1, pi, mu_pi
-
-# Set parameters for the sequence generation
-# S = 3  # Size of the state space
-# T = 6  # Length of the sequence
-# alpha = 0.1  # Dirichlet parameter
-
-# Generate the sequence with causal structure
-# x, y = generate_sequence_with_causal_structure(S, T, alpha)
-# print(f"Input sequence x: {x}")
-# print(f"Target y: {y}")
-# print('----')
