@@ -44,9 +44,9 @@ class CausalSelfAttention(nn.Module):
         self.d = d
         self.heads = heads
         self.d_out = d_out
-        self.scale = (d) ** -0.5
         self.A = nn.Parameter(torch.Tensor(heads, d, d))
         nn.init.xavier_uniform_(self.A)
+        print(self.A)
 
     def forward(self, h): 
         B, T, d = h.size() # [bs, T, d]

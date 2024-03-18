@@ -146,6 +146,12 @@ for stage in range(n_layers):
 dataset = TensorDataset(X, Y)
 dataloader = DataLoader(dataset, batch_size=bs, shuffle=False)
 
+
+# visualize before train
+visualize(model, save_file_path, 0)
+save(model,save_file_path,0)
+
+
 pbar = tqdm(list(range(n_epoch)),mininterval=1,ncols=100)
 for epoch in pbar:
     loss_total = 0.
@@ -168,17 +174,9 @@ for epoch in pbar:
     
     # Log the loss and heatmap of A1 after every update
     if epoch % 10 == 0:   
-        heatmap_path1 = f"{save_file_path}/heatmap_A1_{epoch}.png"
-        heatmap_path2 = f"{save_file_path}/heatmap_A2_{epoch}.png"
-        heatmap_W = f"{save_file_path}/heatmap_WO_{epoch}.png"
-        draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1)
-        draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2)
-        draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-0.1,vmax=0.1)
-        
+        visualize(model, save_file_path, epoch)
     if epoch % 50 == 0:   
-        torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
-        torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
-        torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
+        save(model,save_file_path,epoch)
     
 
 heatmap_path1 = f"{save_file_path}/heatmap_A1.png"
@@ -190,6 +188,10 @@ draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vm
 torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1.pt')
 torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2.pt')
 torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO.pt')
+
+# visualize at the end
+visualize(model, save_file_path)
+save(model,save_file_path)
 
 # Finish the wandb run
 wandb.finish()

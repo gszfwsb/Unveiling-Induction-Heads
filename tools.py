@@ -33,7 +33,7 @@ def save_dataset(x, y, file_path):
 def load_dataset(file_path):
     return torch.load(file_path)
 
-def draw_heatmap(data, heatmap_path, vmin=0, vmax=1):
+def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
     # Create a heatmap using matplotlib and your desired colormap
     plt.figure(figsize=(10, 10))
     plt.imshow(data, cmap='inferno', vmin=vmin, vmax=vmax)
@@ -44,3 +44,26 @@ def draw_heatmap(data, heatmap_path, vmin=0, vmax=1):
     # Close plt figure to free memory
     plt.close()
     return heatmap_path
+
+def visualize(model, save_file_path, epoch=-1):
+    if epoch == -1:
+        heatmap_path1 = f"{save_file_path}/heatmap_A1.png"
+        heatmap_path2 = f"{save_file_path}/heatmap_A2.png"
+        heatmap_W = f"{save_file_path}/heatmap_WO.png"
+    else:
+        heatmap_path1 = f"{save_file_path}/heatmap_A1_{epoch}.png"
+        heatmap_path2 = f"{save_file_path}/heatmap_A2_{epoch}.png"
+        heatmap_W = f"{save_file_path}/heatmap_WO_{epoch}.png"
+    draw_heatmap(model.layers[0].A.cpu().detach().numpy()[0], heatmap_path1,vmin=-.2,vmax=.2)
+    draw_heatmap(model.layers[1].A.cpu().detach().numpy()[0], heatmap_path2,vmin=-.2,vmax=.2)
+    draw_heatmap(model.output_layer.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-.4,vmax=.4)
+
+def save(model, save_file_path, epoch=-1):
+    if epoch == -1:
+        torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1.pt')
+        torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2.pt')
+        torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO.pt')
+    else:
+        torch.save(model.layers[0].A.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
+        torch.save(model.layers[1].A.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
+        torch.save(model.output_layer.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
