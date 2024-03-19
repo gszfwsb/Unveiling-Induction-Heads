@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from cat import DisentangledTransformer
-from task import generate_sequence_with_causal_structure
+from task_markov import generate_sequence_with_causal_structure
 
 from tools import *
 import argparse

@@ -26,8 +26,8 @@ def makedirs(path):
     return
 
 
-def save_dataset(x, y, file_path):
-    torch.save((x, y), file_path)
+def save_dataset(x, y, pi, mu_pi, file_path):
+    torch.save((x, y, pi, mu_pi), file_path)
     
     
 def load_dataset(file_path):

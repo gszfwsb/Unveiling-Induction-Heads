@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from cat import DisentangledTransformer
-from task import generate_sequence_with_causal_structure
+from task_markov import generate_sequence_with_causal_structure
 
 from tools import *
 import argparse
@@ -25,7 +25,7 @@ def get_dataset(S, T, alpha, bs):
     x, y, pi, mu_pi = generate_sequence_with_causal_structure(S, T, alpha, bs)
     x = F.one_hot(x, num_classes=S).float()  # (bs, T, S) S word emb indices 
     y = F.one_hot(y, num_classes=S)  # (bs, S) S word emb indices
-    return x, y
+    return x, y, pi, mu_pi
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=10)
@@ -39,7 +39,7 @@ parser.add_argument('--alpha',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
 parser.add_argument('--n-epoch',type=int,default=500)
-parser.add_argument('--n-sample',type=int,default=100000)
+parser.add_argument('--n-sample',type=int,default=2**17)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=False)
 
@@ -90,12 +90,18 @@ criterion = population_loss(args.ignore_idx)
 if not os.path.isfile(dataset_file_path):
     print('generate and save the dataset')
     # If not, generate and save the dataset
-    X, Y = get_dataset(S, T, alpha, n_sample) # [n_sample, T, S], [n_sample, S]
-    save_dataset(X, Y, dataset_file_path)
+    X, Y, pi, mu_pi = get_dataset(S, T, alpha, n_sample) # [n_sample, T, S], [n_sample, S]
+    save_dataset(X, Y, pi, mu_pi, dataset_file_path)
 else:
     # If it is, load the dataset from the cache
-    X, Y = load_dataset(dataset_file_path)
+    X, Y, pi, mu_pi, = load_dataset(dataset_file_path)
     print('already cache, load from disk!')
+
+# print(pi, mu_pi)
+# draw_heatmap(pi, f"{save_file_path}/pi.png",vmin=0,vmax=S)
+# print(mu_pi)
+# draw_heatmap(mu_pi, f"{save_file_path}/mu_pi.png",vmin=0,vmax=S)
+
 
 # define optimizers and schedulars
 optimizer = optim.SGD(model.parameters(), lr=args.lr)
@@ -138,9 +144,9 @@ for epoch in pbar:
     })
     
     # Log the loss and heatmap of A1 after every update
-    if epoch % 10 == 0:   
-        visualize(model, save_file_path, epoch)
     if epoch % 50 == 0:   
+        visualize(model, save_file_path, epoch)
+    if epoch % 100 == 0:   
         save(model,save_file_path,epoch)
 
 # visualize at the end

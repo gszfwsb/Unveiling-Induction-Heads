@@ -12,28 +12,28 @@ def sample_markov_chain(S, alpha):
     return transition_matrix
 
 # Function to find the stationary distribution µπ of π
-def stationary_distribution(transition_matrix):
+def stationary_distribution(A):
     # Solve (πP = π) for π with a uniform initial distribution
-    stationary_dist = torch.full((transition_matrix.size(0),), fill_value=1/transition_matrix.size(0))
-    previous_dist = torch.zeros_like(stationary_dist)
-    while not torch.allclose(stationary_dist, previous_dist):
-        previous_dist = stationary_dist.clone()
-        stationary_dist = torch.mv(transition_matrix, stationary_dist)
-    return stationary_dist
+    n = A.shape[0]
+    b = torch.zeros(n)
+    x = torch.linalg.solve(A-torch.eye(n), b)
+    assert torch.allclose(A @ x, x)
+    print(x)
+    return x
 
 # Function to generate a random sequence with causal structure
-def generate_sequence_with_causal_structure(S, T, alpha, size=1):
-    # Sample a Markov chain transition matrix π from the prior Pπ
-    pi = sample_markov_chain(S, alpha)
-    # Compute the stationary distribution µπ of π
-    mu_pi = stationary_distribution(pi)
-    
+def generate_sequence_with_causal_structure(S, T, alpha, size=1):  
     # Initialize the sequence
     sequences = torch.empty(size, T, dtype=torch.long)
     s_T_plus_1 = torch.empty(size, dtype=torch.long)
+    pis, mu_pis = [],[]
     pbar = tqdm(range(size),ncols=100,mininterval=1)
     pbar.set_description('generating data...')
     for b in pbar:
+        # Sample a Markov chain transition matrix π from the prior Pπ
+        pi = sample_markov_chain(S, alpha)
+        # Compute the stationary distribution µπ of π
+        mu_pi = stationary_distribution(pi)
         # Sample the first element s1 from the stationary distribution µπ if p(1) is empty
         sequences[b,0] = dist.Categorical(probs=mu_pi).sample()
         
@@ -42,8 +42,10 @@ def generate_sequence_with_causal_structure(S, T, alpha, size=1):
             sequences[b,i] = dist.Categorical(probs=pi[sequences[b,i-1]]).sample()
         
         # Draw s_T uniformly from [S] and then s_{T+1} from π conditioned on s_T
-        s_T = dist.Uniform(0, S).sample().long().item()
+        s_T = torch.randint(0, S, (1,)).item()
         s_T_plus_1[b] = dist.Categorical(probs=pi[s_T]).sample().item()
         sequences[b,T-1] = s_T
         # Return the input sequence x = s_{1:T} and the target y = s_{T+1}
-    return sequences, s_T_plus_1, pi, mu_pi
+        pis.append(pi)
+        mu_pis.append(mu_pi)
+    return sequences, s_T_plus_1, pis, mu_pis
