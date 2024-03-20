@@ -45,7 +45,7 @@ parser.add_argument('--enable-wandb',type=bool,default=False)
 
 args = parser.parse_args()
 
-set_seed(args.seed)
+# set_seed(args.seed)
 device = args.device
 S = args.vocab_size  # Define your vocab size here (size of alphabet)
 T = args.seq_length

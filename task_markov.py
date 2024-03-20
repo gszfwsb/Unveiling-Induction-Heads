@@ -1,7 +1,5 @@
 import torch
 import torch.distributions as dist
-import networkx as nx
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 import torch
@@ -22,8 +20,10 @@ def generate_distribution_over_markov_chains(S, alpha):
 
 # Function to sample a Markov chain π from the distribution Pπ
 def sample_markov_chain_from_distribution(dirichlet_distribution, S):
-    # Sample each row of the transition matrix from the Dirichlet distribution
+    # Initialize the transition matrix
     transition_matrix = torch.stack([dirichlet_distribution.sample() for _ in range(S)])
+    # Normalize the rows to sum to 1 (if necessary)
+    transition_matrix = transition_matrix / transition_matrix.sum(axis=1, keepdims=True)
     return transition_matrix
 
 
@@ -39,8 +39,8 @@ def stationary_distribution(transition_matrix):
 # Function to generate a random sequence with causal structure
 def generate_sequence_with_causal_structure(S, T, alpha, size=1):  
     # Initialize the sequence
-    sequences = torch.empty(size, T, dtype=torch.long)
-    s_T_plus_1 = torch.empty(size, dtype=torch.long)
+    sequences = torch.ones(size, T, dtype=torch.long) * (-100)
+    targets = torch.ones(size, dtype=torch.long)* (-100)
     pis, mu_pis = [],[]
     pbar = tqdm(range(size),ncols=100,mininterval=1)
     pbar.set_description('generating data...')
@@ -55,16 +55,18 @@ def generate_sequence_with_causal_structure(S, T, alpha, size=1):
         sequences[b,0] = dist.Categorical(probs=mu_pi).sample()
         
         # For each position i from 2 to T-1, sample si conditioned on the previous state si-1
-        for i in range(1, T-1):
-            prev_state = sequences[b, i-1]
-            sequences[b, i] = dist.Categorical(probs=pi[prev_state]).sample()
-      
+        for i in range(0, T-1, 2):
+            sequences[b, i] = dist.Categorical(probs=mu_pi).sample()
+            sequences[b, i+1] = dist.Categorical(probs=pi[sequences[b, i]]).sample()
         
         # Draw s_T uniformly from [S] and then s_{T+1} from π conditioned on s_T
         s_T = torch.randint(0, S, (1,)).item()
         sequences[b,T-1] = s_T
-        s_T_plus_1[b] = dist.Categorical(probs=pi[s_T]).sample().item()
+        targets[b] = dist.Categorical(probs=pi[s_T]).sample().item()
+
         # Return the input sequence x = s_{1:T} and the target y = s_{T+1}
         pis.append(pi)
         mu_pis.append(mu_pi)
-    return sequences, s_T_plus_1, pis, mu_pis
+    assert (sequences>=0).all(), 'negative values!'
+    assert (sequences<S).all(), 'large values!'
+    return sequences, targets, pis, mu_pis

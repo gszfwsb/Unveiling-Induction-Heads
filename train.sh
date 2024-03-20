@@ -16,7 +16,7 @@ python3 train_once.py --batch-size 10000 --lr 1 --n-epoch 1000 --device cuda:2
 
 
 # true settings
-python3 train_once.py --batch-size 1024 --lr 1 --n-epoch 1024 --n-sample 131072 --device cuda:0 --alpha 0.1 #--enable-wandb True
+python3 train_once.py --batch-size 1024 --lr 1 --n-epoch 1024 --n-sample 100 --device cuda:0 --alpha 0.1 #--enable-wandb True
 
 
 
