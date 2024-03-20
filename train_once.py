@@ -21,8 +21,8 @@ def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
     return criterion
 
-def get_dataset(S, T, alpha, bs):
-    x, y, pi, mu_pi = generate_sequence_with_causal_structure(S, T, alpha, bs)
+def get_dataset(S, T, alpha, size):
+    x, y, pi, mu_pi = generate_sequence_with_causal_structure(S, T, alpha, size)
     x = F.one_hot(x, num_classes=S).float()  # (bs, T, S) S word emb indices 
     y = F.one_hot(y, num_classes=S)  # (bs, S) S word emb indices
     return x, y, pi, mu_pi
@@ -87,7 +87,8 @@ criterion = population_loss(args.ignore_idx)
 
 # Generate the sequence with causal structure
 # Check if the dataset is already cached
-if not os.path.isfile(dataset_file_path):
+# if not os.path.isfile(dataset_file_path):
+if True:
     print('generate and save the dataset')
     # If not, generate and save the dataset
     X, Y, pi, mu_pi = get_dataset(S, T, alpha, n_sample) # [n_sample, T, S], [n_sample, S]
@@ -144,7 +145,7 @@ for epoch in pbar:
     })
     
     # Log the loss and heatmap of A1 after every update
-    if epoch % 50 == 0:   
+    if epoch % 100 == 0:   
         visualize(model, save_file_path, epoch)
     if epoch % 100 == 0:   
         save(model,save_file_path,epoch)

@@ -56,8 +56,11 @@ def generate_sequence_with_causal_structure(S, T, alpha, size=1):
         
         # For each position i from 2 to T-1, sample si conditioned on the previous state si-1
         for i in range(1, T-1):
-            prev_state = sequences[b, i-1]
-            sequences[b, i] = dist.Categorical(probs=pi[prev_state]).sample()
+            if i % 2 == 1:  # For odd-indexed nodes, sample from mu_pi
+                sequences[b, i] = dist.Categorical(probs=mu_pi).sample()
+            else:  # For even-indexed nodes, sample conditioned on the previous state
+                prev_state = sequences[b, i-1]
+                sequences[b, i] = dist.Categorical(probs=pi[prev_state]).sample()
       
         
         # Draw s_T uniformly from [S] and then s_{T+1} from π conditioned on s_T
