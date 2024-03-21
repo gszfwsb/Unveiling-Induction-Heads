@@ -106,10 +106,10 @@ else:
 
 # define optimizers and schedulars
 optimizer = optim.SGD(model.parameters(), lr=args.lr)
-scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=2**17)
+scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=2**17//bs)
 
 dataset = TensorDataset(X, Y)
-dataloader = DataLoader(dataset, batch_size=bs, shuffle=False)
+dataloader = DataLoader(dataset, batch_size=bs, shuffle=True)
 
 
 # visualize before train

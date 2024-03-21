@@ -45,7 +45,7 @@ def generate_sequence_with_causal_structure(S, T, alpha, size=1):
     pbar = tqdm(range(size),ncols=100,mininterval=1)
     pbar.set_description('generating data...')
     dirichlet_distribution = generate_distribution_over_markov_chains(S, alpha)
-
+    
     for b in pbar:
         # Sample a Markov chain transition matrix π from the prior Pπ
         pi = sample_markov_chain_from_distribution(dirichlet_distribution, S)
