@@ -1,330 +1,334 @@
-from collections import defaultdict
 from dataclasses import dataclass
 import itertools
 import logging
 import random
-import json
 import math
 import numpy as np
+import pickle
 import time
 import torch
 import sys
-import os
-from omegaconf import OmegaConf
+
 from torch import nn, Tensor
 from torch.nn import functional as F
 from typing import List, Optional, Tuple
-from pathlib import Path
-import matplotlib.pyplot as plt
-from ihead_data import DataArgs, Dataset, iterate_batches
-from ihead_basic_model import ModelArgs, Transformer
-import wandb
-
-def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
-    # Create a heatmap using matplotlib and your desired colormap
-    plt.figure(figsize=(10, 10))
-    plt.imshow(data, cmap='inferno', vmin=vmin, vmax=vmax)
-    plt.tight_layout()
-    plt.colorbar()
-    # Save the heatmap to a file
-    plt.savefig(heatmap_path)
-    # Close plt figure to free memory
-    plt.close()
-    return heatmap_path
-
-logging.getLogger().setLevel(logging.INFO)
-
-if True:
-    os.environ['WANDB_MODE'] = 'disabled'
-@dataclass
-class OptimArgs:
-    learning_rate: float = 0.2  # for SGD
-    weight_decay: float = 1e-4  # for SGD
-    momentum: float = 0.9  # for SGD
-    batch_size: int = 512
-    use_sgd: bool = True  # otherwise use AdamW
 
 
 @dataclass
-class TrainerArgs:
-    optim_args: OptimArgs
-    data_args: DataArgs
-    model_args: ModelArgs
-    max_iters: Optional[int] = None
-    eval_delta: int = 100
-    log_norms: bool = False
-    log_probes: bool = False
-    freeze_until: str = ''
-    loss_head_only: bool = True
-    bigram_outs_train: bool = False
-    bigram_outs_test: bool = False
-    num_data_workers: int = 8
-    seed: int = 42
-    save_dir: Optional[str] = 'test'
-    root_dir: str = './results'
+class ModelArgs:
+    vocab_size: int = -1  # defined later
+    dim: int = 64
+    max_length: int = 256
+    final_ffn: bool = False
+    first_ffn: bool = False
+    linear_final_ffn: bool = True
+    linear_first_ffn: bool = True
+    freeze_embeddings: bool = False
+    freeze_output: bool = False
+    tie_output: bool = False
+    use_rope: bool = False
+    sqrtd_embeddings: bool = False
+    no_sqrtd: bool = False
+    sin_cos: bool = False
 
 
-if __name__ == '__main__':
-    args = TrainerArgs(
-           optim_args=OptimArgs(),
-           data_args=DataArgs(),
-           model_args=ModelArgs()
-        )
-    cfg = OmegaConf.merge(OmegaConf.structured(args), OmegaConf.from_cli())
-
-    ds = Dataset(cfg.data_args, train_test=None, bigram_outs=cfg.bigram_outs_train)
-    ds_test = Dataset(cfg.data_args, train_test=None, bigram_outs=cfg.bigram_outs_test)
-    ds_test.idxs = ds.idxs
-    cfg.model_args.vocab_size = ds.num_tokens
-    if cfg.save_dir is not None:
-        outdir = Path(cfg.root_dir) / Path(cfg.save_dir)
-        outdir.mkdir(parents=True, exist_ok=True)
-        # save params
-        cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-        # wandb init
-        wandb.init(project='In-Context-Learning', 
-                entity='shaobowang', 
-                name=f'ICL_test',
-                config=cfg_dict
-        )
-        with open(outdir / 'params.json', 'w') as f:
-            json.dump(cfg_dict, f, sort_keys=True, indent=4)
-        outfile = open(outdir / 'res.jsonl', 'w')
-
-    model = Transformer(cfg.model_args)
-    model.cuda()
-
-    # attn probes
-    attn_features = None
-    attn_features2 = None
-    attn_input_features = None
-    attn_scores = None
-    attn_scores2 = None
-    def attn0_hook(_, inp, outp):
-        global attn_features, attn_input_features, attn_scores
-        attn_input_features = inp[0].detach()
-        attn_features = outp[0].detach()
-        attn_scores = outp[1].detach()
-    model.layers[0].attention.register_forward_hook(attn0_hook)
-    def attn1_hook(_, inp, outp):
-        global attn_scores2, attn_features2
-        attn_features2 = outp[0].detach()
-        attn_scores2 = outp[1].detach()
-    model.layers[1].attention.register_forward_hook(attn1_hook)
-
-    # memory probes
-    range_toks = torch.from_numpy(np.arange(ds.n_train_toks)).cuda()
-    def test_wo1():
-        toks = model.tok_embeddings(range_toks)
-        toks = model.layers[1].attention.wv(toks)
-        toks = model.layers[1].attention.wo(toks)
-        toks = model.output(toks)
-        return (toks.argmax(-1) == range_toks).float().mean().item()
-
-    full_range_toks = torch.from_numpy(np.arange(ds.num_tokens)).cuda()
-    conds = torch.from_numpy(np.array(ds.cond)).cuda()
-    used_idxs = np.arange(ds.num_tokens)
-    if cfg.data_args.fixed_special_toks:
-        used_idxs = np.setdiff1d(used_idxs, ds.idxs)
-    def test_ff1():
-        toks = model.tok_embeddings(full_range_toks[used_idxs])
-        toks = model.layers[1].ff(toks)
-        toks = model.output(toks)
-        return F.kl_div(F.log_softmax(toks, dim=1), conds[used_idxs], reduction='batchmean').item()
-
-    range_pos_toks = torch.from_numpy(np.arange(cfg.model_args.max_length)).cuda()
-    def test_wk0(cutoff=None):
-        pe = model.pe[:cutoff,:]
-        k = model.layers[0].attention.wk(pe[:-1])
-        q = model.layers[0].attention.wq(pe[1:])
-        return ((q @ k.t()).argmax(-1) == range_pos_toks[:pe.shape[0]-1]).float().mean().item()
-
-    wk1_range_toks = full_range_toks.clone()
-    if cfg.data_args.fixed_special_toks:
-        wk1_range_toks = wk1_range_toks[ds.idxs]
-    def test_wk1():
-        toksk = model.tok_embeddings(wk1_range_toks)
-        toksk = model.layers[0].attention.wv(toksk)
-        toksk = model.layers[0].attention.wo(toksk)
-        toksk = model.layers[1].attention.wk(toksk)
-
-        toksq = model.tok_embeddings(wk1_range_toks)
-        toksq = model.layers[1].attention.wq(toksq)
-        return ((toksq @ toksk.t()).argmax(-1) == range_toks[:wk1_range_toks.shape[0]]).float().mean().item()
+def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
+    t = torch.arange(end, device=freqs.device)  # type: ignore
+    freqs = torch.outer(t, freqs).float()  # type: ignore
+    freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+    return freqs_cis
 
 
-    # initial param freezing
-    freeze_until = defaultdict(list)
-    to_freeze = []
-    if cfg.freeze_until:
-        for kv in cfg.freeze_until.split(','):
-            k, v = kv.split(':')
-            k = int(k)
-            to_freeze.append(v)
-            freeze_until[k].append(v)
+def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
+    ndim = x.ndim
+    assert 0 <= 1 < ndim
+    assert freqs_cis.shape == (x.shape[1], x.shape[-1])
+    shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
+    return freqs_cis.view(*shape)
 
-        for name, p in model.named_parameters():
-            if name in to_freeze:
-                p.requires_grad_(False)
 
-    # optim
-    if cfg.optim_args.use_sgd:
-        optimizer = torch.optim.SGD(model.parameters(),
-                lr=cfg.optim_args.learning_rate,
-                weight_decay=cfg.optim_args.weight_decay,
-                momentum=cfg.optim_args.momentum)
-    else:
-        optimizer = torch.optim.AdamW(
-                model.parameters(),
-                lr=cfg.optim_args.learning_rate,
-                weight_decay=cfg.optim_args.weight_decay,
-                betas=(0.9, 0.95),
-                eps=1e-8)
+def apply_rotary_emb(
+    xq: torch.Tensor,
+    xk: torch.Tensor,
+    freqs_cis: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
+    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+    return xq_out.type_as(xq), xk_out.type_as(xk)
 
-    # a test batch for experimentation
-    x_exp, out_exp = ds.gen_batch(np.random.default_rng(0), 128)
-    x_exp = x_exp[:,:ds.seq_length]
 
-    # OOD test data
-    x_test, out_test = ds_test.gen_batch(np.random.default_rng(0), 512)
-    x_t = torch.from_numpy(x_test[:,:ds.seq_length]).cuda()
-    y_t = torch.from_numpy(x_test[:,1:ds.seq_length + 1]).cuda()
-    outs_t = torch.from_numpy(out_test[:,:ds.seq_length]).cuda()
+class Attention(nn.Module):
+    def __init__(self,
+                 dim: int,
+                 use_rope: bool = False,
+                 no_sqrtd: bool = False,
+                 freeze_wk: bool = False,
+                 freeze_wv: bool = False,
+                 freeze_wo: bool = False):
+        super().__init__()
+        self.dim = dim
+        self.use_rope = use_rope
+        self.no_sqrtd = no_sqrtd
 
-    t = time.time()
-    t0 = t
-    res = []
-    for i, (x, y, outs) in enumerate(iterate_batches(ds, batch_size=cfg.optim_args.batch_size,
-                                     num_workers=cfg.num_data_workers, seed=cfg.seed)):
-        dt_data = time.time() - t
-        if cfg.max_iters is not None and i >= cfg.max_iters:
-            if cfg.save_dir is not None:
-                outfile.close()
-            sys.exit(0)
+        self.wq = nn.Identity()
 
-        x = torch.from_numpy(x).cuda()
-        y = torch.from_numpy(y).cuda()
-        outs = torch.from_numpy(outs).cuda()
+        self.wk = nn.Linear(dim, dim, bias=False)
+        if freeze_wk:
+            self.wk.weight.requires_grad_(False)
 
-        if i in freeze_until:  # unfreeze params
-            for name, p in model.named_parameters():
-                if name in freeze_until[i]:
-                    p.requires_grad_(True)
+        self.wv = nn.Linear(dim, dim, bias=False)
+        if freeze_wv:
+            self.wv.weight.requires_grad_(False)
 
-        optimizer.zero_grad()
-        pred = model(x)
+        self.wo = nn.Linear(dim, dim, bias=False)
+        if freeze_wo:
+            self.wo.weight.requires_grad_(False)
 
-        if cfg.loss_head_only:
-            loss = F.cross_entropy(pred[outs >= 2], y[outs >= 2])
+    def forward(self,
+                x: torch.Tensor,
+                mask: torch.Tensor,
+                freqs_cis: Optional[torch.Tensor] = None):
+        bs, slen, _ = x.shape
+        assert mask is not None
+
+        xq = self.wq(x).view(bs, slen, 1, self.dim)
+        xk = self.wk(x).view(bs, slen, 1, self.dim)
+        xv = self.wv(x).view(bs, slen, 1, self.dim)
+
+        if self.use_rope:
+            assert freqs_cis is not None
+            xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
+
+        # change to (bs, n_heads, slen, head_dim)
+        xq, xk, xv = xq.transpose(1, 2), xk.transpose(1, 2), xv.transpose(1, 2)
+        if self.no_sqrtd:
+            scores = torch.matmul(xq, xk.transpose(2, 3))
         else:
-            loss = F.cross_entropy(pred.flatten(0, 1), y.flatten(0, 1))
+            scores = torch.matmul(xq, xk.transpose(2, 3)) / math.sqrt(self.dim)
+        scores = scores + mask  # (bs, n_heads, slen, slen)
+        scores = F.softmax(scores.float(), dim=-1).type_as(x)
+        output = torch.matmul(scores, xv)  # (bs, n_heads, slen, head_dim)
+        output = output.transpose(1, 2)  # (bs, slen, n_heads, head_dim)
 
-        loss.backward()
-
-        optimizer.step()
-        dt = time.time() - t
-        t = time.time()
-
-        if i % cfg.eval_delta == 0:
-            if cfg.data_args.k > 0:
-                acc_tot = (pred.argmax(-1)[outs >= 1] == y[outs >= 1]).float().mean().item()
-                sl = 10
-                acc_start = (pred[:,:sl].argmax(-1)[outs[:,:sl] >= 1] == y[:,:sl][outs[:,:sl] >= 1]).float().mean().item()
-                el = 500
-                acc_end = (pred[:,-el:].argmax(-1)[outs[:,-el:] >= 2] == y[:,-el:][outs[:,-el:] >= 2]).float().mean().item()
-                loss_bigram = F.cross_entropy(pred[outs == 0,:], y[outs == 0]).item()
-                loss_head = F.cross_entropy(pred[outs >= 2,:], y[outs >= 2]).item()
-
-                # first layer attn scores probe
-                i1, i2 = torch.where(outs[:,:-1] >= 1)
-                i1_start, i2_start = torch.where(outs[:,:-1] == 1)
-                amax = attn_scores[:,0,:,:].argmax(-1)
-                score_acc = (amax[i1, i2 + 1] == i2).float().mean().item()
-                score_start_acc = (amax[i1_start, i2_start + 1] == i2_start).float().mean().item()
-
-                # second layer attn scores probe (check that attended token's prev token has correct condition)
-                i1, i2 = torch.where(outs >= 2)
-                amax2 = attn_scores2.squeeze(1)[i1,i2,:].argmax(-1)
-                score2_next_acc = (x[i1, amax2] == y[i1, i2]).float().mean().item()
-                pred_attended_acc = (x[i1, amax2] == pred[i1,i2].argmax(-1)).float().mean().item()
-
-                bad = (amax2 == 0).float().sum()
-                tot = amax2.shape[0]
-                i1 = i1[amax2 >= 1]
-                i2 = i2[amax2 >= 1]
-                amax2 = amax2[amax2 >= 1]
-                score2_acc = (x[i1, amax2 - 1] == x[i1, i2]).float().sum().item() / tot
-
-                # first layer attn score probe conditioned on locations attended by second layer
-                score_cond_acc = (amax[i1, amax2] == amax2 - 1).float().mean().item()
-
-                # second layer attn score probe conditioned on repeated tokens
-                i1, i2 = torch.where((outs >= 2) & (x == y))
-                amax1 = attn_scores.squeeze(1)[i1,i2,:].argmax(-1)
-                score1_repeat_val_acc = (x[i1, amax1] == y[i1, i2]).float().mean().item()
-                amax2 = attn_scores2.squeeze(1)[i1,i2,:].argmax(-1)
-                score2_repeat_val_acc = (x[i1, amax2] == y[i1, i2]).float().mean().item()
-                # score2_repeat_prev_acc = (amax2 == i2 - 1).float().mean().item()
-
-                draw_heatmap(attn_scores[0][0].cpu().detach().numpy(), f'{outdir}/attn_score_{i}.png')
-                draw_heatmap(attn_scores2[0][0].cpu().detach().numpy(), f'{outdir}/attn_score_{i}.png')
+        output = output.reshape(bs, slen, -1)
+        return self.wo(output), scores
 
 
-                if True:  # cfg.log_probes:
-                    wo1_acc = test_wo1()
-                    if cfg.model_args.final_ffn:
-                        ff1_loss = test_ff1()
-                    else:
-                        ff1_loss = -1
-                    wk0_acc = test_wk0()
-                    wk0_64_acc = test_wk0(cutoff=64)
-                    wk1_acc = test_wk1()
+class FeedForward(nn.Module):
+    def __init__(self,
+                 dim: int,
+                 hidden_dim: int):
+        super().__init__()
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
 
-                repeat_frac = (x[outs >= 1] == y[outs >= 1]).float().mean().item()
+    def forward(self, x):
+        h = self.w1(x)
+        h = F.relu(h.float()).type_as(x)
+        return self.w2(h)
 
-                # OOD test (NOTE: do this after the probes sinces it messes hooks!)
-                with torch.no_grad():
-                    pred_t = model(x_t)
-                acc_end_test = (pred_t[:,-el:].argmax(-1)[outs_t[:,-el:] >= 2] == y_t[:,-el:][outs_t[:,-el:] >= 2]).float().mean().item()
 
-                logging.info(
-                    f'''{i} ({dt_data:.2f}, {dt:.2f}, {t - t0:.2f}): loss: {loss.item():.4f} ({loss_bigram:.4f}, {loss_head:.4f}), \
-                    acc: {acc_tot:.4f} ({acc_end:.4f} / {acc_end_test:.4f}) \
-                    probes: {score_start_acc:.4f} / {score2_acc:.4f} / {score_cond_acc:.4f} / {pred_attended_acc:.4f} ({repeat_frac:.4f})'''
-                )
-                if cfg.log_probes:
-                    logging.info(f'memory probes wk0: {wk0_acc:.4f} ({wk0_64_acc:.4f}), wk1: {wk1_acc:.4f}, wo1: {wo1_acc:.4f}, ff1: {ff1_loss:.4f}')
-
-                curr_res = {'iter': i, 'loss': loss.item(), 'loss_bigram': loss_bigram, 'loss_head': loss_head,
-                            'acc_tot': acc_tot, 'acc_start': acc_start, 'acc_end': acc_end, 'acc_end_test': acc_end_test,
-                            'score_acc': score_acc, 'score_start_acc': score_start_acc, 'score2_acc': score2_acc,
-                            'score_cond_acc': score_cond_acc,
-                            'pred_attended_acc': pred_attended_acc, 'repeat_frac': repeat_frac,
-                            'wk0_acc': wk0_acc, 'wk0_64_acc': wk0_64_acc, 'wk1_acc': wk1_acc, 'wo1_acc': wo1_acc, 'ff1_loss': ff1_loss}
-
-                for name, p in model.named_parameters():
-                    if p.requires_grad:
-                        curr_res['norm_' + name] = p.norm().item()
-                        curr_res['gradnorm_' + name] = p.grad.norm().item()
-
-                if cfg.log_norms:
-                    param_norms = {
-                            'wk': [layer.attention.wk.weight.norm().item() for layer in model.layers],
-                            'wv': [layer.attention.wv.weight.norm().item() for layer in model.layers],
-                            'wo': [layer.attention.wo.weight.norm().item() for layer in model.layers],
-                            }
-                    grad_norms = {
-                            'wk': [layer.attention.wk.weight.grad.norm().item() for layer in model.layers if layer.attention.wk.weight.requires_grad],
-                            'wv': [layer.attention.wv.weight.grad.norm().item() for layer in model.layers if layer.attention.wv.weight.requires_grad],
-                            'wo': [layer.attention.wo.weight.grad.norm().item() for layer in model.layers if layer.attention.wo.weight.requires_grad],
-                            }
-                    logging.info(repr(param_norms))
-                    logging.info(repr(grad_norms))
-
-                if cfg.save_dir is not None:
-                    print(json.dumps(curr_res), file=outfile, flush=True)
-                res.append(curr_res)
+class TransformerBlock(nn.Module):
+    def __init__(self,
+                 dim: int,
+                 use_rope: bool = False,
+                 no_sqrtd: bool = False,
+                 no_ffn: bool = False,
+                 linear_ffn: bool = False,
+                 parallel: bool = False,
+                 freeze_wk: bool = False,
+                 freeze_wv: bool = False,
+                 freeze_wo: bool = False,
+                 freeze_ffn: bool = False,
+                ):
+        super().__init__()
+        self.attention = Attention(
+                dim=dim,
+                use_rope=use_rope,
+                no_sqrtd=no_sqrtd,
+                freeze_wk=freeze_wk,
+                freeze_wv=freeze_wv,
+                freeze_wo=freeze_wo)
+        self.no_ffn = no_ffn
+        self.parallel = parallel
+        if not no_ffn:
+            if linear_ffn:
+                self.ff = nn.Linear(dim, dim, bias=False)
             else:
-                logging.info(f'{i} ({dt_data:.2f}, {dt:.2f}, {t - t0:.2f}): {loss.item():.4f}')
-                res.append({'loss': loss.item()})
-            wandb.log(curr_res)
+                self.ff = FeedForward(dim=dim, hidden_dim=4*dim)
+            if freeze_ffn:
+                for p in self.ff.parameters():
+                    p.requires_grad_(False)
+
+    def forward(self,
+                x: torch.Tensor,
+                mask: torch.Tensor,
+                freqs_cis: Optional[torch.Tensor] = None,
+                return_scores: bool = False,
+                no_ffn: bool = False):
+        no_ffn = no_ffn or self.no_ffn
+
+        h, scores = self.attention(x, mask, freqs_cis=freqs_cis)
+
+        if return_scores:
+            return scores
+        if no_ffn:
+            return x + h
+        else:
+            if self.parallel:
+                return x + h + self.ff(x)
+            else:
+                h = x + h
+                return h + self.ff(h)
+
+
+class Transformer(nn.Module):
+    def __init__(self, args: ModelArgs):
+        super().__init__()
+        self.vocab_size = args.vocab_size
+        self.tie_output = args.tie_output
+        self.dim = args.dim
+        self.use_rope = args.use_rope
+        self.sin_cos = args.sin_cos
+
+        # embeddings
+        self.tok_embeddings = nn.Embedding(args.vocab_size, args.dim)
+        if args.sqrtd_embeddings:
+            self.tok_embeddings.weight.data.normal_(std=1./math.sqrt(args.dim))
+        if args.freeze_embeddings:
+            self.tok_embeddings.weight.requires_grad_(False)
+
+        if self.sin_cos:
+            # sin/cos position embeddings
+            position = torch.arange(args.max_length).unsqueeze(1)
+            div_term = torch.exp(torch.arange(0, args.dim, 2) * (-math.log(10000.0) / args.dim))
+            pe = torch.zeros(args.max_length, args.dim)
+            pe[:, 0::2] = torch.sin(position * div_term)
+            pe[:, 1::2] = torch.cos(position * div_term)
+        else:
+            # random absolute positional embeddings
+            pe = torch.randn(args.max_length, args.dim)
+        if args.sqrtd_embeddings:
+            pe *= 1. / math.sqrt(args.dim)
+
+        self.register_buffer('pe', pe)
+
+        freqs_cis = precompute_freqs_cis(
+            self.dim // 1, args.max_length
+        )
+        self.register_buffer('freqs_cis', freqs_cis)
+
+        self.layers = nn.ModuleList([
+            TransformerBlock(
+                dim=args.dim,
+                use_rope=args.use_rope,
+                no_sqrtd=args.no_sqrtd,
+                no_ffn=not args.first_ffn,
+                linear_ffn=args.linear_first_ffn,
+                freeze_wk=False,
+                freeze_wv=True,
+                freeze_wo=True,
+                ),
+            TransformerBlock( 
+                dim=args.dim,
+                use_rope=False,  # args.use_rope,
+                no_sqrtd=args.no_sqrtd,
+                no_ffn=not args.final_ffn,
+                linear_ffn=args.linear_final_ffn,
+                freeze_wk=False,
+                freeze_wv=True,
+                freeze_wo=False,
+                )
+            ])
+
+        self.output = nn.Linear(args.dim, args.vocab_size, bias=False)
+        if args.freeze_output:
+            self.output.weight.requires_grad_(False)
+        if args.tie_output:
+            if args.freeze_output:
+                self.output.weight.data = self.tok_embeddings.weight.data / math.sqrt(args.dim)
+            else:
+                self.output.weight = self.tok_embeddings.weight / math.sqrt(args.dim)
+
+    def forward(self, tokens: torch.Tensor, return_layer: Optional[int] = None, before_ffn: bool = False):
+        B, N = tokens.shape
+
+        # embedding layer
+        h = self.tok_embeddings(tokens)
+        if not self.use_rope:
+            h = h + self.pe.unsqueeze(0)
+
+        if return_layer == 0:
+            return h
+
+        # causal mask
+        mask = torch.full((1, 1, N, N), float('-inf'), device=tokens.device)
+        mask = torch.triu(mask, diagonal=1).type_as(h)
+
+        # transformer blocks
+        for i, layer in enumerate(self.layers):
+            if return_layer == i + 1:
+                return layer(h, mask, freqs_cis=self.freqs_cis, no_ffn=before_ffn)
+            h = layer(h, mask, freqs_cis=self.freqs_cis)
+
+        # output layer
+        output = self.output(h)
+        if self.tie_output:
+            output /= math.sqrt(self.dim)
+        return output.float()
+
+    def forward_ff_only(self, tokens: torch.Tensor):
+        B, N = tokens.shape
+
+        # embedding layer
+        h = self.tok_embeddings(tokens)
+        if not self.use_rope:
+            h = h + self.pe.unsqueeze(0)
+
+        # transformer blocks
+        for i, layer in enumerate(self.layers):
+            h = h + layer.ff(h)
+
+        # output layer
+        output = self.output(h)
+        if self.tie_output:
+            output /= math.sqrt(self.dim)
+        return output.float()
+
+    def get_layer_scores(self, tokens: torch.Tensor, n: int = 0):
+        assert n < len(self.layers)
+        B, N = tokens.shape
+
+        # embedding layer
+        h = self.tok_embeddings(tokens)
+        h = h + self.pe.unsqueeze(0)
+
+        # causal mask
+        mask = torch.full((1, 1, N, N), float('-inf'), device=tokens.device)
+        mask = torch.triu(mask, diagonal=1).type_as(h)
+
+        # transformer blocks
+        for i, layer in enumerate(self.layers):
+            if i == n:
+                return layer(h, mask, freqs_cis=self.freqs_cis, return_scores=True)
+            else:
+                h = layer(h, mask, freqs_cis=self.freqs_cis)
+
+    def get_top_preds(self, tokens: torch.Tensor, n: int = 4):
+        squeeze = False
+        if len(tokens.shape) == 1:
+            squeeze = True
+            tokens = tokens.unsqueeze(0)
+        with torch.no_grad():
+            preds = self(tokens).detach()
+        vals, idxs = preds.sort(-1, descending=True)
+        vals = vals[:,:,:n]
+        idxs = idxs[:,:,:n]
+        if squeeze:
+            return vals.squeeze(0), idxs.squeeze(0)
+        return vals, idxs
+

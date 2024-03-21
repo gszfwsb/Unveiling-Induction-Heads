@@ -9,19 +9,33 @@ import numpy as np
 import time
 import torch
 import sys
-
+import os
 from omegaconf import OmegaConf
 from torch import nn, Tensor
 from torch.nn import functional as F
 from typing import List, Optional, Tuple
 from pathlib import Path
-
+import matplotlib.pyplot as plt
 from ihead_data import DataArgs, Dataset, iterate_batches
 from ihead_basic_model import ModelArgs, Transformer
+import wandb
+
+def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
+    # Create a heatmap using matplotlib and your desired colormap
+    plt.figure(figsize=(10, 10))
+    plt.imshow(data, cmap='inferno', vmin=vmin, vmax=vmax)
+    plt.tight_layout()
+    plt.colorbar()
+    # Save the heatmap to a file
+    plt.savefig(heatmap_path)
+    # Close plt figure to free memory
+    plt.close()
+    return heatmap_path
 
 logging.getLogger().setLevel(logging.INFO)
 
-
+if True:
+    os.environ['WANDB_MODE'] = 'disabled'
 @dataclass
 class OptimArgs:
     learning_rate: float = 0.2  # for SGD
@@ -37,17 +51,17 @@ class TrainerArgs:
     data_args: DataArgs
     model_args: ModelArgs
     max_iters: Optional[int] = None
-    eval_delta: int = 5
+    eval_delta: int = 100
     log_norms: bool = False
     log_probes: bool = False
     freeze_until: str = ''
     loss_head_only: bool = True
     bigram_outs_train: bool = False
     bigram_outs_test: bool = False
-    num_data_workers: int = 60
+    num_data_workers: int = 8
     seed: int = 42
-    save_dir: Optional[str] = None
-    root_dir: str = ''
+    save_dir: Optional[str] = 'test'
+    root_dir: str = './results'
 
 
 if __name__ == '__main__':
@@ -62,13 +76,19 @@ if __name__ == '__main__':
     ds_test = Dataset(cfg.data_args, train_test=None, bigram_outs=cfg.bigram_outs_test)
     ds_test.idxs = ds.idxs
     cfg.model_args.vocab_size = ds.num_tokens
-
     if cfg.save_dir is not None:
         outdir = Path(cfg.root_dir) / Path(cfg.save_dir)
         outdir.mkdir(parents=True, exist_ok=True)
         # save params
+        cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+        # wandb init
+        wandb.init(project='In-Context-Learning', 
+                entity='shaobowang', 
+                name=f'ICL_test',
+                config=cfg_dict
+        )
         with open(outdir / 'params.json', 'w') as f:
-                json.dump(dict(cfg), f, sort_keys=True, indent=4)
+            json.dump(cfg_dict, f, sort_keys=True, indent=4)
         outfile = open(outdir / 'res.jsonl', 'w')
 
     model = Transformer(cfg.model_args)
@@ -246,6 +266,11 @@ if __name__ == '__main__':
                 score2_repeat_val_acc = (x[i1, amax2] == y[i1, i2]).float().mean().item()
                 # score2_repeat_prev_acc = (amax2 == i2 - 1).float().mean().item()
 
+                if i % 50 == 0:
+                    draw_heatmap(attn_scores[0][0].cpu().detach().numpy(), f'{outdir}/attn_score1_{i}.png',vmin=0)
+                    draw_heatmap(attn_scores2[0][0].cpu().detach().numpy(), f'{outdir}/attn_score2_{i}.png',vmin=0)
+
+
                 if True:  # cfg.log_probes:
                     wo1_acc = test_wo1()
                     if cfg.model_args.final_ffn:
@@ -264,10 +289,10 @@ if __name__ == '__main__':
                 acc_end_test = (pred_t[:,-el:].argmax(-1)[outs_t[:,-el:] >= 2] == y_t[:,-el:][outs_t[:,-el:] >= 2]).float().mean().item()
 
                 logging.info(
-                        f'''{i} ({dt_data:.2f}, {dt:.2f}, {t - t0:.2f}): loss: {loss.item():.4f} ({loss_bigram:.4f}, {loss_head:.4f}), \
-acc: {acc_tot:.4f} ({acc_end:.4f} / {acc_end_test:.4f}) \
-probes: {score_start_acc:.4f} / {score2_acc:.4f} / {score_cond_acc:.4f} / {pred_attended_acc:.4f} ({repeat_frac:.4f})'''
-)
+                    f'''{i} ({dt_data:.2f}, {dt:.2f}, {t - t0:.2f}): loss: {loss.item():.4f} ({loss_bigram:.4f}, {loss_head:.4f}), \
+                    acc: {acc_tot:.4f} ({acc_end:.4f} / {acc_end_test:.4f}) \
+                    probes: {score_start_acc:.4f} / {score2_acc:.4f} / {score_cond_acc:.4f} / {pred_attended_acc:.4f} ({repeat_frac:.4f})'''
+                )
                 if cfg.log_probes:
                     logging.info(f'memory probes wk0: {wk0_acc:.4f} ({wk0_64_acc:.4f}), wk1: {wk1_acc:.4f}, wo1: {wo1_acc:.4f}, ff1: {ff1_loss:.4f}')
 
@@ -303,3 +328,4 @@ probes: {score_start_acc:.4f} / {score2_acc:.4f} / {score_cond_acc:.4f} / {pred_
             else:
                 logging.info(f'{i} ({dt_data:.2f}, {dt:.2f}, {t - t0:.2f}): {loss.item():.4f}')
                 res.append({'loss': loss.item()})
+            wandb.log(curr_res)
