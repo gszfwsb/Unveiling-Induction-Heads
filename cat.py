@@ -16,8 +16,14 @@ class CausalSelfAttention(nn.Module):
         outs = []
         for i in range(self.heads):
             scores = torch.matmul(torch.matmul(h, self.A[i]), h.transpose(-2,-1)) # [bs, T, d]
-            mask = torch.tril(torch.ones(T, T)).to(h.device).unsqueeze(0) # [1, T, T]
-            scores = scores.masked_fill(mask == 0, float('-inf')) # Apply causal mask
+            # mask = torch.tril(torch.ones(T, T)).to(h.device).unsqueeze(0) # [1, T, T]
+            # scores = scores.masked_fill(mask == 0, float('-inf')) # Apply causal mask
+            
+            # causal mask
+            mask = torch.full((1, T, T), float('-inf'), device=h.device)
+            mask = torch.triu(mask, diagonal=1).type_as(h)
+            scores = scores + mask  # [bs, T, d]
+            
             attn = F.softmax(scores, dim=-1) # [bs, T, T]
             out = torch.matmul(attn, h) # [bs, T, d]
             outs.append(out) # [head, bs, T, d]

@@ -31,7 +31,7 @@ parser.add_argument('--batch-size',type=int, default=1024)
 parser.add_argument('--alpha',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-sample',type=int,default=2**17)
+parser.add_argument('--n-sample',type=int,default=2**27)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=False)
 
@@ -107,7 +107,7 @@ for x, y in pbar:
     global_step += bs
     
     # Log the loss and heatmap of A1 after every update
-    if step % 50 == 0:   
+    if step % 10 == 0:   
         visualize(model, save_file_path, global_step)
     if step % 100 == 0:   
         save(model,save_file_path,global_step)
