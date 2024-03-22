@@ -117,6 +117,24 @@ visualize(model, save_file_path, 'init')
 save(model,save_file_path,'init')
 
 
+# attn probes
+attn_features = None
+attn_features2 = None
+attn_input_features = None
+attn_scores = None
+attn_scores2 = None
+def attn0_hook(_, inp, outp):
+    global attn_features, attn_input_features, attn_scores
+    attn_input_features = inp[0].detach()
+    attn_features = outp[0].detach()
+    attn_scores = outp[1].detach()
+model.layers[0].attention.register_forward_hook(attn0_hook)
+def attn1_hook(_, inp, outp):
+    global attn_scores2, attn_features2
+    attn_features2 = outp[0].detach()
+    attn_scores2 = outp[1].detach()
+model.layers[1].attention.register_forward_hook(attn1_hook)
+
 pbar = tqdm(list(range(n_epoch)),mininterval=1,ncols=100)
 for epoch in pbar:
     loss_total = 0.

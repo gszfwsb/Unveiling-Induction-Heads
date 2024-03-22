@@ -31,7 +31,7 @@ parser.add_argument('--batch-size',type=int, default=1024)
 parser.add_argument('--alpha',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-sample',type=int,default=2**27)
+parser.add_argument('--n-sample',type=int,default=2**24)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=False)
 
@@ -90,6 +90,8 @@ pbar = tqdm(dataloader,ncols=100,mininterval=1)
 step = 0
 global_step = 0
 
+x_test = dataloader.dataset[0][0].unsqueeze(0).to(device)
+
 for x, y in pbar:
     # assert not (torch.isnan(x).any() or torch.isnan(x).any())
     x, y = x.to(device), y.to(device)
@@ -105,12 +107,19 @@ for x, y in pbar:
     
     step += 1
     global_step += bs
-    
+
     # Log the loss and heatmap of A1 after every update
     if step % 10 == 0:   
-        visualize(model, save_file_path, global_step)
+        visualize(model, save_file_path, step)
+        with torch.no_grad():
+            score1 = model.get_layer_score(x_test,0)
+            score2 = model.get_layer_score(x_test,1)
+        draw_heatmap(score1[0].cpu().detach().numpy(), f'{save_file_path}/score1_{step}.png',vmin=0,vmax=1)
+        draw_heatmap(score2[0].cpu().detach().numpy(), f'{save_file_path}/score2_{step}.png',vmin=0,vmax=1)
+        
+        
     if step % 100 == 0:   
-        save(model,save_file_path,global_step)
+        save(model,save_file_path,step)
 
 # visualize at the end
 visualize(model, save_file_path)

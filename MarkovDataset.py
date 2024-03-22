@@ -40,24 +40,26 @@ class MarkovDataset(torch.utils.data.Dataset):
         self.T = T
         self.n_sample = n_sample
         self.dirichlet_distribution = generate_distribution_over_markov_chains(S, alpha)
-        
+        self.generate_dist()
     def __len__(self):
         return self.n_sample
     
-    def __getitem__(self, idx):
+    def generate_dist(self):
         # Sample a Markov chain transition matrix π from the prior Pπ
-        pi = sample_markov_chain_from_distribution(self.dirichlet_distribution, self.S)
+        self.pi = sample_markov_chain_from_distribution(self.dirichlet_distribution, self.S)
         # Compute the stationary distribution µπ of π
-        mu_pi = stationary_distribution(pi)
+        self.mu_pi = stationary_distribution(self.pi)
+    
+    def __getitem__(self, idx):
         sequence = torch.empty(self.T, dtype=torch.long)
         for i in range(0, self.T-1, 2):
-            sequence[i] = dist.Categorical(probs=mu_pi).sample()
-            sequence[i+1] = dist.Categorical(probs=pi[sequence[i]]).sample()
+            sequence[i] = dist.Categorical(probs=self.mu_pi).sample()
+            sequence[i+1] = dist.Categorical(probs=self.pi[sequence[i]]).sample()
             
         # Draw s_T uniformly from [S] and then s_{T+1} from π conditioned on s_T
         s_T = torch.randint(0, self.S, (1,)).item()
         sequence[self.T-1] = s_T
-        s_T_plus_1 = dist.Categorical(probs=pi[s_T]).sample()
+        s_T_plus_1 = dist.Categorical(probs=self.pi[s_T]).sample()
         
         x = F.one_hot(sequence, num_classes=self.S).float()
         y = F.one_hot(s_T_plus_1, num_classes=self.S)

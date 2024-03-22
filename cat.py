@@ -11,26 +11,28 @@ class CausalSelfAttention(nn.Module):
         self.A = nn.Parameter(torch.Tensor(heads, d, d))
         nn.init.zeros_(self.A)
 
-    def forward(self, h): 
+    def forward(self, h, return_score=False): 
         B, T, d = h.size() # [bs, T, d]
         outs = []
         for i in range(self.heads):
             scores = torch.matmul(torch.matmul(h, self.A[i]), h.transpose(-2,-1)) # [bs, T, d]
             # mask = torch.tril(torch.ones(T, T)).to(h.device).unsqueeze(0) # [1, T, T]
             # scores = scores.masked_fill(mask == 0, float('-inf')) # Apply causal mask
-            
             # causal mask
             mask = torch.full((1, T, T), float('-inf'), device=h.device)
             mask = torch.triu(mask, diagonal=1).type_as(h)
-            scores = scores + mask  # [bs, T, d]
+            scores = scores + mask  # (bs, T, T)
             
             attn = F.softmax(scores, dim=-1) # [bs, T, T]
             out = torch.matmul(attn, h) # [bs, T, d]
             outs.append(out) # [head, bs, T, d]
         outs = torch.stack(outs).permute(1, 2, 0, 3)
         assert outs.shape == (B, T, self.heads, d)
-        return outs.reshape(B, T, -1)  # [bs, T, h*d]
-
+        if return_score:
+            return outs.reshape(B, T, -1), attn # [bs, T, h*d]
+        else:
+            return outs.reshape(B, T, -1)  # [bs, T, h*d]
+            
 class DisentangledTransformer(nn.Module):
     def __init__(self, S, n_heads, n_layers, T, d_out):
         super().__init__()
@@ -47,6 +49,19 @@ class DisentangledTransformer(nn.Module):
         for i in range(n_layers):
             self.dims.append(self.dims[-1]*(1+n_heads[i]))
     
+    def get_layer_score(self, x, n):
+        B, T, S = x.size()
+        position = torch.arange(T, dtype=torch.long, device=x.device).unsqueeze(0).expand(B, -1) # (bs, T) 
+        position = F.one_hot(position, num_classes=T).float()  # (bs, T, T) T pos emb indices
+        h = torch.cat([x, position],-1) # (bs, T, d0)
+        assert h.shape[-1] == S + T
+        for i, attn_layer in enumerate(self.layers):
+            # print(h.shape)
+            h_attn, scores = attn_layer(h, return_score=True) # # (bs, T, m_{l-1} * d_{l-1})
+            h = torch.cat([h, h_attn], -1) # (bs, T, d_l)
+            if i == n:
+                return scores
+            
     def forward(self, x):
         B, T, S = x.size()
         position = torch.arange(T, dtype=torch.long, device=x.device).unsqueeze(0).expand(B, -1) # (bs, T) 
