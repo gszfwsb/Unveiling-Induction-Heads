@@ -20,10 +20,14 @@ from ihead_data import DataArgs, Dataset, iterate_batches
 from ihead_basic_model import ModelArgs, Transformer
 import wandb
 
-def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
+def draw_heatmap(data, heatmap_path, x=None, vmin=-.5, vmax=.5,cmap='Blues'):
     # Create a heatmap using matplotlib and your desired colormap
     plt.figure(figsize=(10, 10))
-    plt.imshow(data, cmap='inferno', vmin=vmin, vmax=vmax)
+    plt.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
+    n = data.shape[0]
+    if x is not None:
+        plt.xticks(list(range(0,n)),x[:n])
+        plt.yticks(list(range(0,n)),x[:n])
     plt.tight_layout()
     plt.colorbar()
     # Save the heatmap to a file
@@ -266,9 +270,7 @@ if __name__ == '__main__':
                 score2_repeat_val_acc = (x[i1, amax2] == y[i1, i2]).float().mean().item()
                 # score2_repeat_prev_acc = (amax2 == i2 - 1).float().mean().item()
 
-                if i % 50 == 0:
-                    draw_heatmap(attn_scores[0][0].cpu().detach().numpy(), f'{outdir}/attn_score1_{i}.png',vmin=0)
-                    draw_heatmap(attn_scores2[0][0].cpu().detach().numpy(), f'{outdir}/attn_score2_{i}.png',vmin=0)
+
 
 
                 if True:  # cfg.log_probes:
@@ -285,7 +287,18 @@ if __name__ == '__main__':
 
                 # OOD test (NOTE: do this after the probes sinces it messes hooks!)
                 with torch.no_grad():
-                    pred_t = model(x_t)
+                    pred_t = model(x_t) # [bs, 256]
+                    test_x = ds_test.decode(x_t[0].cpu().detach().numpy().tolist())
+                    if i % 50 == 0:
+                        A1 = model.layers[0].attention.wk.weight.data
+                        A2 = model.layers[1].attention.wk.weight.data
+
+                        score1 = model.get_layer_scores(x_t[0].unsqueeze(0),0)
+                        score2 = model.get_layer_scores(x_t[0].unsqueeze(0),1)
+                        draw_heatmap(A1.cpu().detach().numpy(), f'{outdir}/A1_{i}.png',vmin=-.2,vmax=.2,cmap='inferno')
+                        draw_heatmap(A2.cpu().detach().numpy(), f'{outdir}/A2_{i}.png',vmin=-.2,vmax=.2,cmap='inferno')
+                        draw_heatmap(score1[0][0].cpu().detach().numpy()[:50,:50], f'{outdir}/attn_score1_{i}.png',x=test_x,vmin=0,vmax=1)
+                        draw_heatmap(score2[0][0].cpu().detach().numpy()[:50,:50], f'{outdir}/attn_score2_{i}.png',x=test_x,vmin=0,vmax=1)
                 acc_end_test = (pred_t[:,-el:].argmax(-1)[outs_t[:,-el:] >= 2] == y_t[:,-el:][outs_t[:,-el:] >= 2]).float().mean().item()
 
                 logging.info(
