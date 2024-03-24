@@ -51,11 +51,11 @@ class MarkovDataset(torch.utils.data.Dataset):
         self.mu_pi = stationary_distribution(self.pi)
     
     def __getitem__(self, idx):
+        self.generate_dist()
         sequence = torch.empty(self.T, dtype=torch.long)
-        for i in range(0, self.T-1, 2):
-            sequence[i] = dist.Categorical(probs=self.mu_pi).sample()
+        sequence[0] = dist.Categorical(probs=self.mu_pi).sample()
+        for i in range(0, self.T-1):
             sequence[i+1] = dist.Categorical(probs=self.pi[sequence[i]]).sample()
-            
         # Draw s_T uniformly from [S] and then s_{T+1} from π conditioned on s_T
         s_T = torch.randint(0, self.S, (1,)).item()
         sequence[self.T-1] = s_T

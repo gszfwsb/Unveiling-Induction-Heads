@@ -8,14 +8,16 @@ class CausalSelfAttention(nn.Module):
         self.d = d
         self.heads = heads
         self.d_out = d_out
-        self.A = nn.Parameter(torch.Tensor(heads, d, d))
-        nn.init.zeros_(self.A)
+        # self.A = nn.Parameter(torch.Tensor(heads, d, d))
+        self.A = nn.Linear(d, heads*d, bias=False)
+        nn.init.zeros_(self.A.weight.data)
 
     def forward(self, h, return_score=False): 
         B, T, d = h.size() # [bs, T, d]
         outs = []
+        hA = self.A(h).view(B, T, self.heads, self.d) # [bs, T, heads, d]
         for i in range(self.heads):
-            scores = torch.matmul(torch.matmul(h, self.A[i]), h.transpose(-2,-1)) # [bs, T, d]
+            scores = torch.matmul(hA[:,:,i], h.transpose(-2,-1)) # [bs, T, T]
             # mask = torch.tril(torch.ones(T, T)).to(h.device).unsqueeze(0) # [1, T, T]
             # scores = scores.masked_fill(mask == 0, float('-inf')) # Apply causal mask
             # causal mask
@@ -41,36 +43,27 @@ class DisentangledTransformer(nn.Module):
             CausalSelfAttention(self.dims[_], self.dims[_+1], n_heads[_],) 
             for _ in range(n_layers)
         ])
-        self.output_layer = nn.Linear(self.dims[-1], d_out, bias=False) # d_L, d_out
-        nn.init.zeros_(self.output_layer.weight.data)
+        self.Wo = nn.Linear(self.dims[-1], bias=False) # d_L, d_out
+        # self.Wo = nn.Parameter(torch.Tensor(d_out, self.dims[-1]))
+        nn.init.zeros_(self.Wo)
+        position = torch.arange(T, dtype=torch.long) # (T) 
+        self.position = F.one_hot(position, num_classes=T).float()  # (T, T) T pos emb indices
 
     def get_dims(self, d0, n_heads, n_layers):
         self.dims = [d0]
         for i in range(n_layers):
             self.dims.append(self.dims[-1]*(1+n_heads[i]))
-    
-    def get_layer_score(self, x, n):
-        B, T, S = x.size()
-        position = torch.arange(T, dtype=torch.long, device=x.device).unsqueeze(0).expand(B, -1) # (bs, T) 
-        position = F.one_hot(position, num_classes=T).float()  # (bs, T, T) T pos emb indices
-        h = torch.cat([x, position],-1) # (bs, T, d0)
-        assert h.shape[-1] == S + T
-        for i, attn_layer in enumerate(self.layers):
-            # print(h.shape)
-            h_attn, scores = attn_layer(h, return_score=True) # # (bs, T, m_{l-1} * d_{l-1})
-            h = torch.cat([h, h_attn], -1) # (bs, T, d_l)
-            if i == n:
-                return scores
             
     def forward(self, x):
         B, T, S = x.size()
-        position = torch.arange(T, dtype=torch.long, device=x.device).unsqueeze(0).expand(B, -1) # (bs, T) 
-        position = F.one_hot(position, num_classes=T).float()  # (bs, T, T) T pos emb indices
+        position = self.position.unsqueeze(0).expand(B,T,T)
+        position = position.to(x.device)
         h = torch.cat([x, position],-1) # (bs, T, d0)
         assert h.shape[-1] == S + T
         for attn_layer in self.layers:
             # print(h.shape)
             h_attn = attn_layer(h) # # (bs, T, m_{l-1} * d_{l-1})
             h = torch.cat([h, h_attn], -1) # (bs, T, d_l)
-        logits = self.output_layer(h)  # [bs, T, d_out]
+        # logits = torch.matmul(h, self.Wo.T)  # [bs, T, d_out]
+        logits = self.Wo(h)  # [bs, T, d_out]
         return logits
