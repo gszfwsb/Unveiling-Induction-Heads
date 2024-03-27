@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 from cat import DisentangledTransformer
-from MarkovDataset import MarkovDataset
 from tools import *
 import argparse
 import wandb
@@ -30,8 +29,9 @@ parser.add_argument('--batch-size',type=int, default=1024)
 parser.add_argument('--alpha',type=float, default=0.1)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-sample',type=int,default=2**24)
+parser.add_argument('--n-sample',type=int,default=2**14)
 parser.add_argument('--device',type=str, default='cuda:0')
+parser.add_argument('--n-epochs',type=int, default=1000)
 parser.add_argument('--enable-wandb',type=bool,default=False)
 
 args = parser.parse_args()
@@ -48,6 +48,7 @@ alpha = args.alpha  # Dirichlet parameter
 ignore_idx = args.ignore_idx
 n_sample = args.n_sample
 lr = args.lr
+n_epochs = args.n_epochs
 
 if not args.enable_wandb:
     os.environ['WANDB_MODE'] = 'disabled'
@@ -108,6 +109,9 @@ if not os.path.isfile(dataset_file_path):
     # If not, generate and save the dataset
     save_dataset(x,y, dataset_file_path)
     print('finishd dataset generation')
+else:
+    x, y = load_dataset(dataset_file_path)
+    print('already cache, load from disk!')
 
 dataset = TensorDataset(x,y)
 
@@ -117,33 +121,34 @@ dataloader = DataLoader(dataset, batch_size=bs)
 visualize(model, save_file_path, 'init')
 # save(model,save_file_path,'init')
 
-pbar = tqdm(dataloader,ncols=100,mininterval=1)
+pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 step = 0
 global_step = 0
 
 
-for x, y in pbar:
-    # assert not (torch.isnan(x).any() or torch.isnan(x).any())
-    x, y = x.to(device), y.to(device)
-    optimizer.zero_grad()
-    logits = model(x) # [bs, T, S]
-    logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
-    loss = criterion(logits, y)
-    loss.backward()
-    optimizer.step()
-    # Update the learning rate
-    # scheduler.step()
-    pbar.set_description(f'loss:{loss.item():.10f}')
-    
-    step += 1
-    global_step += bs
-
-    # Log the loss and heatmap of A1 after every update
-    if step % 50 == 0:   
-        visualize(model, save_file_path, step)
+for epoch in pbar:
+    for x, y in dataloader:
+        # assert not (torch.isnan(x).any() or torch.isnan(x).any())
+        x, y = x.to(device), y.to(device)
+        optimizer.zero_grad()
+        logits = model(x) # [bs, T, S]
+        logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
+        loss = criterion(logits, y.long())
+        loss.backward()
+        optimizer.step()
+        # Update the learning rate
+        # scheduler.step()
+        pbar.set_description(f'loss:{loss.item():.10f}')
         
-    # if step % 100 == 0:   
-    #     save(model,save_file_path,step)
+        step += 1
+        global_step += bs
+
+        # Log the loss and heatmap of A1 after every update
+        if step % 50 == 0:   
+            visualize(model, save_file_path, step)
+            
+        # if step % 100 == 0:   
+        #     save(model,save_file_path,step)
 
 # visualize at the end
 visualize(model, save_file_path)
