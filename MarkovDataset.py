@@ -51,7 +51,7 @@ class MarkovDataset(torch.utils.data.Dataset):
         self.mu_pi = stationary_distribution(self.pi)
     
     def __getitem__(self, idx):
-        self.generate_dist()
+        self.generate_dist() # regenerate pi and mu_pi
         sequence = torch.empty(self.T, dtype=torch.long)
         sequence[0] = dist.Categorical(probs=self.mu_pi).sample()
         for i in range(0, self.T-1):

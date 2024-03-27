@@ -26,8 +26,8 @@ def makedirs(path):
     return
 
 
-def save_dataset(x, y, pi, mu_pi, file_path):
-    torch.save((x, y, pi, mu_pi), file_path)
+def save_dataset(x, y,file_path):
+    torch.save((x, y), file_path)
     
     
 def load_dataset(file_path):
@@ -57,14 +57,14 @@ def visualize(model, save_file_path, epoch=-1):
         heatmap_W = f"{save_file_path}/heatmap_WO_{epoch}.png"
     draw_heatmap(model.layers[0].A.weight.data.cpu().detach().numpy(), heatmap_path1,vmin=-.2,vmax=1)
     draw_heatmap(model.layers[1].A.weight.data.cpu().detach().numpy(), heatmap_path2,vmin=-.2,vmax=1)
-    draw_heatmap(model.Wo.cpu().detach().numpy(), heatmap_W,vmin=-.4,vmax=.4)
+    draw_heatmap(model.Wo.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-.4,vmax=.4)
 
 def save(model, save_file_path, epoch=-1):
     if epoch == -1:
         torch.save(model.layers[0].A.weight.data.data.cpu().detach(),f'{save_file_path}/A1.pt')
         torch.save(model.layers[1].A.weight.data.data.cpu().detach(),f'{save_file_path}/A2.pt')
-        torch.save(model.Wo.cpu().detach().numpy(),f'{save_file_path}/WO.pt')
+        torch.save(model.Wo.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO.pt')
     else:
         torch.save(model.layers[0].A.weight.data.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
         torch.save(model.layers[1].A.weight.data.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
-        torch.save(model.Wo.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
+        torch.save(model.Wo.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')

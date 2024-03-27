@@ -10,7 +10,7 @@ class CausalSelfAttention(nn.Module):
         self.d_out = d_out
         # self.A = nn.Parameter(torch.Tensor(heads, d, d))
         self.A = nn.Linear(d, heads*d, bias=False)
-        nn.init.zeros_(self.A.weight.data)
+
 
     def forward(self, h, return_score=False): 
         B, T, d = h.size() # [bs, T, d]
@@ -24,7 +24,6 @@ class CausalSelfAttention(nn.Module):
             mask = torch.full((1, T, T), float('-inf'), device=h.device)
             mask = torch.triu(mask, diagonal=1).type_as(h)
             scores = scores + mask  # (bs, T, T)
-            
             attn = F.softmax(scores, dim=-1) # [bs, T, T]
             out = torch.matmul(attn, h) # [bs, T, d]
             outs.append(out) # [head, bs, T, d]
@@ -43,9 +42,7 @@ class DisentangledTransformer(nn.Module):
             CausalSelfAttention(self.dims[_], self.dims[_+1], n_heads[_],) 
             for _ in range(n_layers)
         ])
-        self.Wo = nn.Linear(self.dims[-1], bias=False) # d_L, d_out
-        # self.Wo = nn.Parameter(torch.Tensor(d_out, self.dims[-1]))
-        nn.init.zeros_(self.Wo)
+        self.Wo = nn.Linear(self.dims[-1], d_out, bias=False) # d_L, d_out
         position = torch.arange(T, dtype=torch.long) # (T) 
         self.position = F.one_hot(position, num_classes=T).float()  # (T, T) T pos emb indices
 
@@ -56,14 +53,20 @@ class DisentangledTransformer(nn.Module):
             
     def forward(self, x):
         B, T, S = x.size()
+        # print(f'x:{x.shape},{x[0]}')
         position = self.position.unsqueeze(0).expand(B,T,T)
+        # print(f'position:{position.shape},{position[0]}')
         position = position.to(x.device)
         h = torch.cat([x, position],-1) # (bs, T, d0)
+        # print(f'h:{h.shape},{h[0]}')
         assert h.shape[-1] == S + T
         for attn_layer in self.layers:
             # print(h.shape)
             h_attn = attn_layer(h) # # (bs, T, m_{l-1} * d_{l-1})
             h = torch.cat([h, h_attn], -1) # (bs, T, d_l)
+            # print(f'h:{h.shape},{h[0]}')
+        # print(f'h:{h.shape},{h[0]}')
         # logits = torch.matmul(h, self.Wo.T)  # [bs, T, d_out]
         logits = self.Wo(h)  # [bs, T, d_out]
+        # print(f'logits:{logits.shape},{logits[0]}')
         return logits
