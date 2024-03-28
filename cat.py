@@ -8,16 +8,15 @@ class CausalSelfAttention(nn.Module):
         self.d = d
         self.heads = heads
         self.d_out = d_out
-        # self.A = nn.Parameter(torch.Tensor(heads, d, d))
-        self.A = nn.Linear(d, heads*d, bias=False)
+        self.A = nn.Parameter(torch.Tensor(heads, d, d))
+        # self.A = nn.Linear(d, heads*d, bias=False)
 
 
     def forward(self, h, return_score=False): 
         B, T, d = h.size() # [bs, T, d]
         outs = []
-        hA = self.A(h).view(B, T, self.heads, self.d) # [bs, T, heads, d]
         for i in range(self.heads):
-            scores = torch.matmul(hA[:,:,i], h.transpose(-2,-1)) # [bs, T, T]
+            scores = torch.matmul(torch.matmul(h, self.A[i]), h.transpose(-2,-1)) # [bs, T, T]
             # mask = torch.tril(torch.ones(T, T)).to(h.device).unsqueeze(0) # [1, T, T]
             # scores = scores.masked_fill(mask == 0, float('-inf')) # Apply causal mask
             # causal mask
@@ -42,7 +41,8 @@ class DisentangledTransformer(nn.Module):
             CausalSelfAttention(self.dims[_], self.dims[_+1], n_heads[_],) 
             for _ in range(n_layers)
         ])
-        self.Wo = nn.Linear(self.dims[-1], d_out, bias=False) # d_L, d_out
+        # self.Wo = nn.Linear(self.dims[-1], d_out, bias=False) # d_L, d_out
+        self.Wo = nn.Parameter(torch.Tensor(d_out, self.dims[-1]))
         position = torch.arange(T, dtype=torch.long) # (T) 
         self.position = F.one_hot(position, num_classes=T).float()  # (T, T) T pos emb indices
 
@@ -66,7 +66,7 @@ class DisentangledTransformer(nn.Module):
             h = torch.cat([h, h_attn], -1) # (bs, T, d_l)
             # print(f'h:{h.shape},{h[0]}')
         # print(f'h:{h.shape},{h[0]}')
-        # logits = torch.matmul(h, self.Wo.T)  # [bs, T, d_out]
-        logits = self.Wo(h)  # [bs, T, d_out]
+        logits = torch.matmul(h, self.Wo.T)  # [bs, T, d_out]
+        # logits = self.Wo(h)  # [bs, T, d_out]
         # print(f'logits:{logits.shape},{logits[0]}')
         return logits

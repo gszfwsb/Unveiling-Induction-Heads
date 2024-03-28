@@ -47,24 +47,33 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
     return heatmap_path
 
 def visualize(model, save_file_path, epoch=-1):
+    for layer in range(len(model.layers)):
+        A_l = model.layers[layer].A
+        for head in range(len(A_l)):
+            A_l_i = A_l[head].cpu().detach().numpy()
+            if epoch == -1:
+                heatmap_path = f"{save_file_path}/heatmap_A_{layer+1}_{head+1}.png"
+            else:
+                heatmap_path = f"{save_file_path}/heatmap_A_{layer+1}_{head+1}_{epoch}.png"
+            draw_heatmap(A_l_i, heatmap_path, vmin=-.2, vmax=1)
     if epoch == -1:
-        heatmap_path1 = f"{save_file_path}/heatmap_A1.png"
-        heatmap_path2 = f"{save_file_path}/heatmap_A2.png"
         heatmap_W = f"{save_file_path}/heatmap_WO.png"
     else:
-        heatmap_path1 = f"{save_file_path}/heatmap_A1_{epoch}.png"
-        heatmap_path2 = f"{save_file_path}/heatmap_A2_{epoch}.png"
         heatmap_W = f"{save_file_path}/heatmap_WO_{epoch}.png"
-    draw_heatmap(model.layers[0].A.weight.data.cpu().detach().numpy(), heatmap_path1,vmin=-.2,vmax=1)
-    draw_heatmap(model.layers[1].A.weight.data.cpu().detach().numpy(), heatmap_path2,vmin=-.2,vmax=1)
-    draw_heatmap(model.Wo.weight.data.cpu().detach().numpy(), heatmap_W,vmin=-.4,vmax=.4)
+    draw_heatmap(model.Wo.cpu().detach().numpy(), heatmap_W, vmin=-.4,vmax=.4)
 
 def save(model, save_file_path, epoch=-1):
+    for layer in range(len(model.layers)):
+        A_l = model.layers[layer].A
+        for head in range(len(A_l)):
+            A_l_i = A_l[head].cpu().detach().numpy()
+            if epoch == -1:
+                A_path = f"{save_file_path}/A_{layer+1}_{head+1}.pt"
+            else:
+                A_path = f"{save_file_path}/A_{layer+1}_{head+1}_{epoch}.pt"
+            torch.save(A_l_i,A_path)
     if epoch == -1:
-        torch.save(model.layers[0].A.weight.data.data.cpu().detach(),f'{save_file_path}/A1.pt')
-        torch.save(model.layers[1].A.weight.data.data.cpu().detach(),f'{save_file_path}/A2.pt')
-        torch.save(model.Wo.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO.pt')
+        W_path = f"{save_file_path}/WO.pt"
     else:
-        torch.save(model.layers[0].A.weight.data.data.cpu().detach(),f'{save_file_path}/A1_{epoch}.pt')
-        torch.save(model.layers[1].A.weight.data.data.cpu().detach(),f'{save_file_path}/A2_{epoch}.pt')
-        torch.save(model.Wo.weight.data.cpu().detach().numpy(),f'{save_file_path}/WO_{epoch}.pt')
+        W_path = f"{save_file_path}/WO_{epoch}.pt"
+    torch.save(model.Wo.cpu().detach().numpy(), W_path)
