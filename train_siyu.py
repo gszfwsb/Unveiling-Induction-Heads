@@ -13,7 +13,7 @@ import argparse
 import wandb
 import os
 from causal_data import GraphCausalModel
-from MarkovDataset_perm import MarkovDataset_perm
+
 
 def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
@@ -25,13 +25,14 @@ parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--n-layers',type=int, default=2)
 parser.add_argument('--lr',type=float, default=0.01)
 parser.add_argument('--n-heads',type=int, nargs='+',default=[2,1])
-parser.add_argument('--batch-size',type=int, default=2**17)
+parser.add_argument('--batch-size',type=int, default=1024)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
 parser.add_argument('--n-sample',type=int,default=2**17)
 parser.add_argument('--device',type=str, default='cuda:0')
+parser.add_argument('--n-epochs',type=int, default=1000)
 parser.add_argument('--enable-wandb',type=bool,default=False)
-parser.add_argument('--data-type',type=str,default='Markov chain')
+parser.add_argument('--data-type',type=str,default='Two grams')
 parser.add_argument('--optim',type=str,default='adam')
 parser.add_argument('--init',type=str,default='random')
 
@@ -49,6 +50,7 @@ bs = args.batch_size
 ignore_idx = args.ignore_idx
 n_sample = args.n_sample
 lr = args.lr
+n_epochs = args.n_epochs
 data_type = args.data_type
 optim_method = args.optim
 init = args.init
@@ -68,7 +70,7 @@ wandb.init(project='In-Context-Learning',
 # Define the file paths
 # root_path = '/cpfs01/user/luanqi.p/wangshaobo/data'
 root_path = './data'
-save_file_path = f'results/Task{data_number}_random_{data_type}_perm/{bs}_{lr}_T{T}_S{S}_opt{optim_method}_{init}'
+save_file_path = f'results/Task{data_number}_random_{data_type}/{bs}_{lr}_T{T}_S{S}_opt{optim_method}_{init}'
 makedirs(save_file_path)
 
 # Generate the DisentangledTransformer
@@ -129,47 +131,68 @@ elif optim_method == 'adam':
 else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
+# scheduler = lr_scheduler.StepLR(optimizer, step_size=50)
+
+c_dict = {
+    'A_type': data_type,
+    'T': T,
+    'dim': S,
+    'number_of_samples': n_sample
+}
+data_method = GraphCausalModel(c_dict)
+
 
 dataset_file_path = f'{root_path}/Task{data_number}_new_data_seed{args.seed}_n{n_sample}.pt' 
 
-dataset = MarkovDataset_perm(S, T, n_sample)
-dataloader = DataLoader(dataset, batch_size=bs)
+if not os.path.isfile(dataset_file_path):
+# if True:
+    # Call the __generatedata__ method
+    print('generate and save the dataset')
+    generated_data = data_method.__generatedata__()
+    x,y= data_method.__transform__(generated_data)
+    # If not, generate and save the dataset·
+    save_dataset(x,y, dataset_file_path)
+    print('finishd dataset generation')
+else:
+    x, y = load_dataset(dataset_file_path)
+    print('already cache, load from disk!')
 
+dataset = TensorDataset(x,y)
+
+dataloader = DataLoader(dataset, batch_size=bs)
 
 # visualize before train
 visualize(model, save_file_path, 'init')
 save(model,save_file_path,'init')
 
+pbar = tqdm(list(range(n_epochs)),ncols=100,mininterval=1)
 
 
-pbar = tqdm(dataloader,ncols=100,mininterval=1)
-step = 0
-global_step = 0
-
-
-for x, y in pbar:
-    # assert not (torch.isnan(x).any() or torch.isnan(x).any())
-    x, y = x.to(device), y.to(device)
-    optimizer.zero_grad()
-    logits = model(x) # [bs, T, S]
-    logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
-    loss = criterion(logits, y)
-    loss.backward()
-    optimizer.step()
-    # Update the learning rate
-    # scheduler.step()
-    pbar.set_description(f'loss:{loss.item():.10f}')
-    
-    step += 1
-    global_step += bs
+for epoch in pbar:
+    loss_total, size = 0., 0
+    for x, y in dataloader:
+        # assert not (torch.isnan(x).any() or torch.isnan(x).any())
+        x, y = x.to(device), y.to(device)
+        optimizer.zero_grad()
+        logits = model(x) # [bs, T, S]
+        logits[:,:T-1,:] = ignore_idx # set to ignore index, only T is valid
+        loss = criterion(logits, y.long())
+        loss.backward()
+        optimizer.step()
+        # Update the learning rate
+        # scheduler.step()
+        pbar.set_description(f'loss:{loss.item():.10f}')
+        loss_total+=loss.item()
+        size += x.size(0)
+    wandb.log({'loss':loss_total / size,
+            })
 
     # Log the loss and heatmap of A1 after every update
-    if step % 100 == 0:   
-        visualize(model, save_file_path, step+1)
+    if epoch % 100 == 0:   
+        visualize(model, save_file_path, epoch+1)
         
-    if step % 100 == 0:   
-        save(model,save_file_path,step+1)
-
+    if epoch % 100 == 0:   
+        save(model,save_file_path,epoch+1)
 
 # visualize at the end
 visualize(model, save_file_path)
