@@ -23,16 +23,16 @@ parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=10)
 parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--n-layers',type=int, default=2)
-parser.add_argument('--lr',type=float, default=0.01)
+parser.add_argument('--lr',type=float, default=0.5)
 parser.add_argument('--n-heads',type=int, nargs='+',default=[2,1])
-parser.add_argument('--batch-size',type=int, default=2**17)
+parser.add_argument('--batch-size',type=int, default=2**13)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-sample',type=int,default=2**17)
+parser.add_argument('--n-sample',type=int,default=2**20)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=False)
 parser.add_argument('--data-type',type=str,default='Markov chain')
-parser.add_argument('--optim',type=str,default='adam')
+parser.add_argument('--optim',type=str,default='sgd')
 parser.add_argument('--init',type=str,default='random')
 
 
@@ -93,9 +93,9 @@ if data_type == 'Markov chain':
         nn.init.zeros_(model.layers[1].A[0])
         nn.init.zeros_(model.Wo)
     elif init == 'random':
-        nn.init.kaiming_normal_(model.layers[0].A[0],nonlinearity='linear')
-        nn.init.kaiming_normal_(model.layers[1].A[0],nonlinearity='linear')
-        nn.init.kaiming_normal_(model.Wo,nonlinearity='linear')
+        nn.init.normal_(model.layers[0].A[0], std=0.001)
+        nn.init.normal_(model.layers[1].A[0], std=0.001)
+        nn.init.normal_(model.Wo, std=0.001)
 
 elif data_type == 'Two grams':
     if init == 'realistic':
@@ -125,7 +125,7 @@ criterion = population_loss(args.ignore_idx)
 if optim_method == 'sgd':
     optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=0, momentum=0)
 elif optim_method == 'adam':
-    optimizer = optim.Adam(model.parameters(), lr=args.lr,weight_decay=0)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
 else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
@@ -146,7 +146,6 @@ pbar = tqdm(dataloader,ncols=100,mininterval=1)
 step = 0
 global_step = 0
 
-
 for x, y in pbar:
     # assert not (torch.isnan(x).any() or torch.isnan(x).any())
     x, y = x.to(device), y.to(device)
@@ -159,7 +158,7 @@ for x, y in pbar:
     # Update the learning rate
     # scheduler.step()
     pbar.set_description(f'loss:{loss.item():.10f}')
-    
+    wandb.log({'loss':loss.item()})    
     step += 1
     global_step += bs
 
