@@ -23,17 +23,18 @@ parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=10)
 parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--n-layers',type=int, default=2)
-parser.add_argument('--lr',type=float, default=0.5)
-parser.add_argument('--n-heads',type=int, nargs='+',default=[2,1])
+parser.add_argument('--lr',type=float, default=0.6)
+parser.add_argument('--n-heads',type=int, nargs='+',default=[1,1])
 parser.add_argument('--batch-size',type=int, default=2**13)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-sample',type=int,default=2**20)
+parser.add_argument('--n-sample',type=int,default=2**23)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=False)
+parser.add_argument('--resume',type=int,default=None)
 parser.add_argument('--data-type',type=str,default='Markov chain')
-parser.add_argument('--optim',type=str,default='sgd')
-parser.add_argument('--init',type=str,default='random')
+parser.add_argument('--optim',type=str,default='adam')
+parser.add_argument('--init',type=str,default='resume')
 
 
 args = parser.parse_args()
@@ -68,7 +69,7 @@ wandb.init(project='In-Context-Learning',
 # Define the file paths
 # root_path = '/cpfs01/user/luanqi.p/wangshaobo/data'
 root_path = './data'
-save_file_path = f'results/Task{data_number}_random_{data_type}_perm/{bs}_{lr}_T{T}_S{S}_opt{optim_method}_{init}'
+save_file_path = f'results/Task{data_number}_random_{data_type}_perm_{n_sample}/{bs}_{lr}_T{T}_S{S}_opt{optim_method}_{init}'
 makedirs(save_file_path)
 
 # Generate the DisentangledTransformer
@@ -96,6 +97,13 @@ if data_type == 'Markov chain':
         nn.init.normal_(model.layers[0].A[0], std=0.001)
         nn.init.normal_(model.layers[1].A[0], std=0.001)
         nn.init.normal_(model.Wo, std=0.001)
+    else:
+        A1 = torch.load('/cpfs01/user/luanqi.p/wangshaobo/ICL/results/Task1_random_Markov chain_perm_8388608/8192_0.5_T20_S10_optsgd_random/A_1_1.pt')
+        A2 = torch.load('/cpfs01/user/luanqi.p/wangshaobo/ICL/results/Task1_random_Markov chain_perm_8388608/8192_0.5_T20_S10_optsgd_random/A_2_1.pt')
+        Wo = torch.load('/cpfs01/user/luanqi.p/wangshaobo/ICL/results/Task1_random_Markov chain_perm_8388608/8192_0.5_T20_S10_optsgd_random/WO.pt')
+        model.layers[0].A = torch.nn.Parameter(torch.from_numpy(A1).to(device).unsqueeze(0))
+        model.layers[1].A = torch.nn.Parameter(torch.from_numpy(A2).to(device).unsqueeze(0))
+        model.Wo = torch.nn.Parameter(torch.from_numpy(Wo).to(device))
 
 elif data_type == 'Two grams':
     if init == 'realistic':
