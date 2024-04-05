@@ -3,3 +3,4 @@ results/
 wandb/
 transformer-birth
 previous
+foundation_model/
