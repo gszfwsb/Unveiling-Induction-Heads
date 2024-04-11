@@ -1,6 +1,2 @@
-test.py
-results/
-wandb/
-transformer-birth
-previous
 foundation_model/
+memory/

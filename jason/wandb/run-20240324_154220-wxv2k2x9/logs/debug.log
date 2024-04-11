@@ -1,0 +1,26 @@
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_setup.py:_flush():76] Current SDK version is 0.16.1
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_setup.py:_flush():76] Configure stats pid to 4139189
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_setup.py:_flush():76] Loading settings from /home/wangshaobo/.config/wandb/settings
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_setup.py:_flush():76] Loading settings from /mnt/nas2/home/wangshaobo/data/Transformer_learning/wandb/settings
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_setup.py:_flush():76] Loading settings from environment variables: {}
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program_relpath': 'train_2stage.py', 'program_abspath': '/mnt/nas2/home/wangshaobo/data/Transformer_learning/train_2stage.py', 'program': '/mnt/nas2/home/wangshaobo/data/Transformer_learning/train_2stage.py'}
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_init.py:_log_setup():524] Logging user logs to /mnt/nas2/home/wangshaobo/data/Transformer_learning/wandb/run-20240324_154220-wxv2k2x9/logs/debug.log
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_init.py:_log_setup():525] Logging internal logs to /mnt/nas2/home/wangshaobo/data/Transformer_learning/wandb/run-20240324_154220-wxv2k2x9/logs/debug-internal.log
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_init.py:init():564] calling init triggers
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_init.py:init():571] wandb.init called with sweep_config: {}
+config: {'vocab_size': 10, 'seq_length': 20, 'n_layers': 2, 'time': [10, 10], 'lr': ['1'], 'n_heads': [1, 1], 'd_out': 10, 'batch_size': 1024, 'alpha': 0.1, 'beta': 0.1, 'seed': 2024, 'ignore_idx': -100, 'n_epoch': 100, 'n_sample': 100000, 'device': 'cuda:0', 'enable_wandb': True}
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_init.py:init():614] starting backend
+2024-03-24 15:42:20,034 INFO    MainThread:4139189 [wandb_init.py:init():618] setting up manager
+2024-03-24 15:42:20,041 INFO    MainThread:4139189 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2024-03-24 15:42:20,044 INFO    MainThread:4139189 [wandb_init.py:init():624] backend started and connected
+2024-03-24 15:42:20,053 INFO    MainThread:4139189 [wandb_init.py:init():716] updated telemetry
+2024-03-24 15:42:20,072 INFO    MainThread:4139189 [wandb_init.py:init():749] communicating run to backend with 90.0 second timeout
+2024-03-24 15:42:20,794 ERROR   MainThread:4139189 [wandb_init.py:init():775] encountered error: It appears that you do not have permission to access the requested resource. Please reach out to the project owner to grant you access. If you have the correct permissions, verify that there are no issues with your networking setup.(Error 404: Not Found)
+2024-03-24 15:42:22,807 ERROR   MainThread:4139189 [wandb_init.py:init():1188] It appears that you do not have permission to access the requested resource. Please reach out to the project owner to grant you access. If you have the correct permissions, verify that there are no issues with your networking setup.(Error 404: Not Found)
+Traceback (most recent call last):
+  File "/home/wangshaobo/anaconda3/envs/faithseg/lib/python3.9/site-packages/wandb/sdk/wandb_init.py", line 1170, in init
+    run = wi.init()
+  File "/home/wangshaobo/anaconda3/envs/faithseg/lib/python3.9/site-packages/wandb/sdk/wandb_init.py", line 781, in init
+    raise error
+wandb.errors.CommError: It appears that you do not have permission to access the requested resource. Please reach out to the project owner to grant you access. If you have the correct permissions, verify that there are no issues with your networking setup.(Error 404: Not Found)
