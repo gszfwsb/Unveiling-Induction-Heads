@@ -70,3 +70,49 @@ class DisentangledTransformer(nn.Module):
         # logits = self.Wo(h)  # [bs, T, d_out]
         # print(f'logits:{logits.shape},{logits[0]}')
         return logits
+
+
+
+class TwoLayerTransformer(nn.Module):
+    def __init__(self, vocab_size, seq_length, num_heads, window_length, w_plus, w_minus, a):
+        super(TwoLayerTransformer, self).__init__()
+        self.S = seq_length
+        self.H = num_heads
+        self.M = window_length
+        # Assuming d_model is equal to input_dim
+        self.S = vocab_size
+        self.W = nn.Parameter(torch.Tensor(self.L,self.H)) 
+        self.A = nn.Linear(self.H*self.S,self.H*self.S)
+        self.init(w_plus, w_minus, a)
+
+    def init(self, w_plus, w_minus, a):
+        self.W = w_minus
+        for i in range(self.H):
+            self.W[i, i] = w_plus
+
+    def forward(self, x):
+        # First layer
+        X_1 = []
+        for i in self.H:
+            w = F.softmax(x,dim=-1)
+            
+        x = self.linear2(x)
+
+        return x
+
+# Example usage:
+input_dim = 64  # Alphabet length S
+seq_length = 10  # Sequence length L
+num_heads = 4  # Number of attention heads H
+
+# Initialize model
+model = TwoLayerTransformer(input_dim=input_dim, seq_length=seq_length, num_heads=num_heads)
+
+# Create a random batch of data with shape (batch_size, seq_length, input_dim)
+batch_size = 32
+X = torch.rand(batch_size, seq_length, input_dim)
+
+# Forward pass
+output = model(X)
+
+output.shape  # Expected shape: (batch_size, seq_length, (H+1) * input_dim)
