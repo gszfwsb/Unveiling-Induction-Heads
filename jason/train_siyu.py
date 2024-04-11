@@ -28,7 +28,7 @@ parser.add_argument('--n-heads',type=int, nargs='+',default=[2,1])
 parser.add_argument('--batch-size',type=int, default=1024)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--ignore-idx',type=int, default=-100)
-parser.add_argument('--n-sample',type=int,default=2**17)
+parser.add_argument('--n-sample',type=int,default=2**20)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--n-epochs',type=int, default=1000)
 parser.add_argument('--enable-wandb',type=bool,default=False)
@@ -70,7 +70,7 @@ wandb.init(project='In-Context-Learning',
 # Define the file paths
 # root_path = '/cpfs01/user/luanqi.p/wangshaobo/data'
 root_path = './data'
-save_file_path = f'results/Task{data_number}_random_{data_type}/{bs}_{lr}_T{T}_S{S}_opt{optim_method}_{init}'
+save_file_path = f'results/Task{data_number}_random_{data_type}_{n_sample}/{bs}_{lr}_T{T}_S{S}_opt{optim_method}_{init}'
 makedirs(save_file_path)
 
 # Generate the DisentangledTransformer
