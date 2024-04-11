@@ -1,2 +1,6 @@
 foundation_model/
 memory/
+jason/results
+jason/data
+jason/wandb
+test/
