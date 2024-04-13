@@ -18,8 +18,16 @@ def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
     return criterion
 
-def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
+def normalize_data(data):
+    # Normalize data to the range [-1, 1]
+    data_min = np.min(data)
+    data_max = np.max(data)
+    return 2 * (data - data_min) / (data_max - data_min) - 1
+
+def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5, normalize=False):
     # Create a heatmap using matplotlib and your desired colormap
+    if normalize:
+        data = normalize_data(data)
     # print(data.shape)
     plt.figure(figsize=(10, 10))
     plt.imshow(data, cmap='inferno', vmin=vmin, vmax=vmax)
@@ -30,16 +38,19 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
     # Close plt figure to free memory
     plt.close()
 
-def draw_curves(train_data, val_data, save_file_path, data_type='train'):
+def draw_curves(train_data, val_data, val_acc, save_file_path, data_type='train'):
     curve_path = f"{save_file_path}/curve.png"
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(15, 6))
     x = list(range(len(train_data)))
-    plt.subplot(121)
-    plt.plot(x,train_data,label='train',color='blue')
-    plt.title('train')
-    plt.subplot(122)
-    plt.plot(x,val_data,label='val',color='green')
-    plt.title('val')
+    plt.subplot(131)
+    plt.plot(x,train_data,label='train',color='green')
+    plt.title('train loss')
+    plt.subplot(132)
+    plt.plot(x,val_data,label='val',color='blue')
+    plt.title('val loss')
+    plt.subplot(133)
+    plt.plot(x,val_acc,label='acc',color='orange')
+    plt.title('val acc')
     plt.tight_layout()
     # Save the curve to a file
     plt.savefig(curve_path)
@@ -49,9 +60,10 @@ def draw_curves(train_data, val_data, save_file_path, data_type='train'):
 def visualize_params(W, A, save_file_path, epoch=-1):
     W_path = f"{save_file_path}/W_{epoch}.png"
     A_path = f"{save_file_path}/A_{epoch}.png"
-
-    draw_heatmap(W, W_path, vmin=-.4,vmax=.4)
-    draw_heatmap(A, A_path, vmin=-.4,vmax=.4)
+    W_thres = max(W.max(),abs(W.min()))
+    draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
+    A_thres = max(W.max(),abs(W.min()))
+    draw_heatmap(A, A_path, vmin=-A_thres,vmax=A_thres)
 
 
 
@@ -61,9 +73,9 @@ parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--window-length',type=int, default=8)
 parser.add_argument('--n-heads',type=int, default=5)
 parser.add_argument('--lr',type=float, default=0.8)
-parser.add_argument('--batch-size',type=int, default=1000000)
+parser.add_argument('--batch-size',type=int, default=100000)
 parser.add_argument('--seed',type=int, default=2024)
-parser.add_argument('--n-sample',type=int,default=100)
+parser.add_argument('--n-sample',type=int,default=100000)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=False)
 parser.add_argument('--data-type',type=str,default='Markov chain')
@@ -72,7 +84,7 @@ parser.add_argument('--w-plus',type=float,default=0.05)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--alpha',type=float,default=0.3)
-parser.add_argument('--n-epochs',type=int,default=1000)
+parser.add_argument('--n-epochs',type=int,default=10000)
 
 
 args = parser.parse_args()
@@ -109,7 +121,7 @@ wandb.init(project='In-Context-Learning-0409model',
 
 # Define the file paths
 root_path = './data'
-save_file_path = f'results/Markov/bs_{bs}_{lr}_L{L}_S{S}_opt{optim_method}'
+save_file_path = f'results/Markov/n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}_a{a}-alpha{alpha}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
@@ -152,7 +164,7 @@ pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
 eval_freq = 100
 
-train_loss_list, val_loss_list = [], []
+train_loss_list, val_loss_list, val_acc_list = [], [], []
 
 # test before
 A = model.A.clone().cpu().detach().numpy()
@@ -181,6 +193,7 @@ for epoch in pbar:
 
             
     model.eval()
+    total_correct = 0
     with torch.no_grad():
         for x, y in val_loader:
             # assert not (torch.isnan(x).any() or torch.isnan(x).any())
@@ -189,9 +202,13 @@ for epoch in pbar:
             loss = criterion(logits, y)
             eval_loss += loss.item()
             # Update the learning rate
+             # Calculate accuracy
+            predicted = torch.argmax(logits, dim=-1)  # Get the index of the max log-probability
+            total_correct += (predicted.squeeze() == y).sum().item()
             # scheduler.step()
             pbar.set_description(f'Val loss:{loss.item():.10f}')
-            wandb.log({'Val loss':loss.item()})                
+            wandb.log({'Val loss':loss.item()})
+        val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
 
     
@@ -199,11 +216,11 @@ for epoch in pbar:
         A = model.A.clone().cpu().detach().numpy()
         W = model.W.clone().cpu().detach().numpy()
         visualize_params(W, A, save_file_path, epoch)
-        draw_curves(train_loss_list, val_loss_list, save_file_path)
+        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path)
 
 
 visualize_params(W, A, save_file_path, 'end')
-draw_curves(train_loss_list, val_loss_list, save_file_path)
+draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path)
 
 # Finish the wandb run
 wandb.finish()
