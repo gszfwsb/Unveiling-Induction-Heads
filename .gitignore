@@ -4,3 +4,6 @@ jason/results
 jason/data
 jason/wandb
 test/
+RPE/data
+RPE/results
+RPE/wandb
