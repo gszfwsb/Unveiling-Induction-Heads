@@ -1,27 +1,21 @@
 import torch
 import torch.distributions as dist
 import torch.nn.functional as F
-
-def generate_distribution_over_markov_chains(S, alpha):
-    # Assuming the distribution is a Dirichlet distribution for each state
-    return dist.Dirichlet(torch.full((S,), alpha))
-
-def sample_markov_chain_from_distribution(distribution, S):
-    # Sample a stochastic matrix for Markov chain transitions
-    return distribution.sample((S,))
+from torch.utils.data import Dataset
 
 
-class MarkovDataset(torch.utils.data.Dataset):
+
+class MarkovDataset(Dataset):
     def __init__(self, S, L, alpha, n_sample):
         self.S = S
         self.L = L
         self.n_sample = n_sample
-        self.dirichlet_distribution = generate_distribution_over_markov_chains(S, alpha)
+        self.dirichlet_distribution = self.generate_distribution(S, alpha)
         self.mu_pi = torch.ones(self.S) / self.S
         self.samples = []
         print('generating datasets...')
         for _ in range(n_sample):
-            self.generate_dist() # regenerate pi
+            self.sample() # regenerate pi
             sequence = torch.empty(self.L, dtype=torch.long)
             sequence[0] = dist.Categorical(probs=self.mu_pi).sample()
             for i in range(0, self.L-2):
@@ -34,13 +28,74 @@ class MarkovDataset(torch.utils.data.Dataset):
             # y = F.one_hot(y, num_classes=self.S)
             self.samples.append((x,y))
 
+    def generate_distribution(self, S, alpha):
+        # Assuming the distribution is a Dirichlet distribution for each state
+        return dist.Dirichlet(torch.full((S,), alpha))
+
+    def sample_transition(self, distribution, S):
+        # Sample a stochastic matrix for Markov chain transitions
+        return distribution.sample((S,))
+
     def __len__(self):
         return self.n_sample
     
-    def generate_dist(self):
+    def sample(self):
         # Sample a Markov chain transition matrix π from the prior Pπ
-        self.pi = sample_markov_chain_from_distribution(self.dirichlet_distribution, self.S)
+        self.pi = self.sample_transition(self.dirichlet_distribution, self.S)
         # Compute the stationary distribution µπ of π
     
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+
+
+class NGramDataset(Dataset):
+    def __init__(self, S, L, n, alpha, n_sample):
+        self.S = S  # Number of states
+        self.L = L  # Length of sequence
+        self.n = n  # The n in n-gram
+        self.alpha = alpha
+        self.n_sample = n_sample
+        self.dirichlet_distribution = dist.Dirichlet(torch.full((S,), alpha))
+        self.samples = []
+        print('Generating datasets...')
+        for _ in range(n_sample):
+            self.sample()  # regenerate pi
+            sequence = torch.empty(self.L + 1, dtype=torch.long)
+            sequence[:self.n-1] = dist.Categorical(probs=torch.ones(self.S) / self.S).sample((self.n-1,)) # uniformly sample
+            for i in range(self.n-1, self.L + 1):
+                # Condition on the previous n-1 states
+                context = sequence[i-self.n+1:i]
+                context_idx = self.context_to_index(context)
+                sequence[i] = dist.Categorical(probs=self.pi[context_idx]).sample()
+            # The input sequence x is the sequence up to L, and the target y is the next state
+            x = F.one_hot(sequence[:-1], num_classes=self.S).float() # length L
+            y = sequence[-1] # length 1
+            self.samples.append((x, y))
+
+    def context_to_index(self, context):
+        # Convert a sequence context to an index for accessing the transition matrix
+        # This assumes that context is a tensor of indices
+        index = 0
+        for i, state in enumerate(context.flip(0)):
+            index += state * (self.S ** i)
+        return index
+
+    def sample_transition(self):
+        # Sample a stochastic matrix for n-gram transitions
+        # Each row in pi corresponds to a unique context of n-1 states
+        pi = torch.zeros((self.S ** (self.n-1), self.S))
+        for i in range(self.S ** (self.n-1)):
+            pi[i] = self.dirichlet_distribution.sample()
+        return pi
+
+    def __len__(self):
+        return self.n_sample
+
+    def sample(self):
+        # Sample a Markov chain transition matrix π from the prior Pπ
+        # for the n-gram model
+        self.pi = self.sample_transition()
+
     def __getitem__(self, idx):
         return self.samples[idx]

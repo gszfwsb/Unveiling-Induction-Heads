@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 from model import TwoLayerTransformer
-from dataset import MarkovDataset
+from dataset import MarkovDataset, NGramDataset
 from tools import *
 import argparse
 import wandb
@@ -76,16 +76,17 @@ parser.add_argument('--lr1',type=float, default=0.8)
 parser.add_argument('--lr2',type=float, default=0.4)
 parser.add_argument('--batch-size',type=int, default=100000)
 parser.add_argument('--seed',type=int, default=2024)
-parser.add_argument('--n-sample',type=int,default=100000)
+parser.add_argument('--n-sample',type=int,default=10000)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=False)
-parser.add_argument('--data-type',type=str,default='Markov chain')
+parser.add_argument('--dataset',type=str,default='NGram')
 parser.add_argument('--optim',type=str,default='adam')
 parser.add_argument('--w-plus',type=float,default=0.05)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--alpha',type=float,default=0.3)
-parser.add_argument('--n-epochs',type=int,default=1000)
+parser.add_argument('--n-epochs',type=int,default=500)
+parser.add_argument('--n-gram',type=int,default=3)
 
 
 args = parser.parse_args()
@@ -105,11 +106,12 @@ bs = args.batch_size
 n_sample = args.n_sample
 lr1 = args.lr1
 lr2 = args.lr2
-data_type = args.data_type
+dataset = args.dataset
 optim_method = args.optim
 n_epochs = args.n_epochs
 alpha = args.alpha
 ignore_idx = -100 
+n = args.n_gram
 
 if not args.enable_wandb:
     os.environ['WANDB_MODE'] = 'disabled'
@@ -117,13 +119,13 @@ if not args.enable_wandb:
 # wandb init
 wandb.init(project='In-Context-Learning-0409model', 
            entity='shaobowang', 
-           name=f'Independently_Markov_bs{bs}_L{L}_S{S}_{optim_method}_lr1{lr1}_lr2{lr2}_{n_epochs}',
+           name=f'Independently_{dataset}_parent{n}_bs{bs}_L{L}_S{S}_{optim_method}_lr1{lr1}_lr2{lr2}',
            config=vars(args)
 )
 
 # Define the file paths
 root_path = './data'
-save_file_path = f'results/Markov/Independently_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_a{a}-alpha{alpha}_n-epochs{n_epochs}'
+save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_a{a}-alpha{alpha}_n-epochs{n_epochs}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
@@ -143,24 +145,37 @@ else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
 
-data_path = './data'
+data_path = f'./data/{dataset}'
 makedirs(data_path)
 
 n_train, n_val = int(n_sample * 0.9), int(n_sample * 0.1)
 
 # Save the datasets
-if os.path.exists(f'{data_path}/{n_sample}_train_set.pt'):
-    train_dataset = torch.load(f'{data_path}/{n_sample}_train_set.pt')
-    val_dataset = torch.load(f'{data_path}/{n_sample}_val_set.pt')
-else:   
-    dataset = MarkovDataset(S, L, alpha, n_sample)
-    # Split into train and validation sets
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [n_train, n_val])
-    torch.save(train_dataset, f'{data_path}/{n_sample}_train_set.pt')
-    torch.save(val_dataset, f'{data_path}/{n_sample}_val_set.pt')
 
+if dataset == 'Markov':
+    if os.path.exists(f'{data_path}/{n_sample}_train_set.pt'):
+        train_dataset = torch.load(f'{data_path}/{n_sample}_train_set.pt')
+        val_dataset = torch.load(f'{data_path}/{n_sample}_val_set.pt')
+    else:  
+        dataset = MarkovDataset(S, L, alpha, n_sample)
+        # Split into train and validation sets
+        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [n_train, n_val])
+        torch.save(train_dataset, f'{data_path}/{n_sample}_train_set.pt')
+        torch.save(val_dataset, f'{data_path}/{n_sample}_val_set.pt')
+else:
+    if os.path.exists(f'{data_path}/{n}_{n_sample}_train_set.pt'):
+        train_dataset = torch.load(f'{data_path}/{n}_{n_sample}_train_set.pt')
+        val_dataset = torch.load(f'{data_path}/{n}_{n_sample}_val_set.pt')
+    else:
+        dataset = NGramDataset(S, L, n, alpha, n_sample)
+        # Split into train and validation sets
+        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [n_train, n_val])
+        torch.save(train_dataset, f'{data_path}/{n}_{n_sample}_train_set.pt')
+        torch.save(val_dataset, f'{data_path}/{n}_{n_sample}_val_set.pt')
+  
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=False)
+
 
 
 
@@ -229,6 +244,8 @@ for epoch in pbar:
 
 # train A second
 train_loss_list, val_loss_list, val_acc_list = [], [], []
+
+pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
 for epoch in pbar:
     model.train()
