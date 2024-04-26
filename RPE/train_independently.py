@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
-from model import TwoLayerTransformer
+from model_A import TwoLayerTransformer
 from dataset import MarkovDataset, NGramDataset
 from tools import *
 import argparse
@@ -73,7 +73,7 @@ parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--window-length',type=int, default=8)
 parser.add_argument('--n-heads',type=int, default=5)
 parser.add_argument('--lr1',type=float, default=0.8)
-parser.add_argument('--lr2',type=float, default=0.4)
+parser.add_argument('--lr2',type=float, default=0.8)
 parser.add_argument('--batch-size',type=int, default=100000)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--n-sample',type=int,default=10000)
@@ -85,7 +85,7 @@ parser.add_argument('--w-plus',type=float,default=0.05)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--alpha',type=float,default=0.3)
-parser.add_argument('--n-epochs',type=int,default=500)
+parser.add_argument('--n-epochs',type=int,default=1000)
 parser.add_argument('--n-gram',type=int,default=3)
 
 
@@ -192,7 +192,7 @@ visualize_params(W, A, save_file_path, 'init', phase=1)
 # train W first
 train_loss_list, val_loss_list, val_acc_list = [], [], []
 
-pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
+pbar = tqdm(range(500),ncols=100,mininterval=1)
 
 for epoch in pbar:
     model.train()
