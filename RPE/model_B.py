@@ -96,7 +96,7 @@ class TwoLayerTransformer(nn.Module):
         kernel_prod = [] # [bs, T]
         for i in range(self.T):
             kernel_prod.append(self.polynomial_kernel(V[:, -1], V[:, i])) # [bs, d, (H+1)], [bs, d, (H+1)] -> [bs]
-        kernel_prod = torch.tensor(kernel_prod) # [bs, T]
+        kernel_prod = torch.tensor(kernel_prod).to(X.device) # [bs, T]
         y = torch.matmul(F.softmax(self.a * kernel_prod, dim=-1), X) # [bs, T], [bs, T, d] -> [bs, d]
         return y
         
