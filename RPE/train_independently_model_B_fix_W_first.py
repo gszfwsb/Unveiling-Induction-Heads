@@ -74,11 +74,20 @@ def visualize_W(W, save_file_path, epoch=-1, phase=1):
     W_thres = max(W.max(),abs(W.min()))
     draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
 
+
 def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch=-1, phase=1):
     C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
     curve_path = f"{save_file_path}/phase{phase}_C_dominance_curve.png"
     C_alpha_sqaure = C_alpha ** 2
-    draw_heatmap(C_alpha, C_alpha_path, vmin=0,vmax=C_alpha_sqaure.max())
+
+    _, ax = plt.subplots(figsize=(10, 6))
+    # Plot the bar of C_alpha
+    ax.bar(np.arange(len(C_alpha_sqaure)), C_alpha_sqaure)
+    ax.set_title('C_alpha Bar')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('C_alpha')
+    plt.savefig(C_alpha_path)
+
     if len(dominating_C_alpha_index) > 0:
         plt.figure(figsize=(15, 6))
         plt.subplot(121)
