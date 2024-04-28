@@ -57,7 +57,8 @@ def draw_curves(train_data, val_data, val_acc, save_file_path, phase=1):
     # Save the curve to a file
     plt.savefig(curve_path)
     # Close plt figure to free memory
-    plt.close()
+    plt.close('all')
+
 
 def draw_a_curve(a_list, save_file_path, phase=1):
     curve_path = f"{save_file_path}/phase{phase}_a_curve.png"
@@ -66,7 +67,7 @@ def draw_a_curve(a_list, save_file_path, phase=1):
     plt.plot(x,a_list)
     plt.title('a')
     plt.savefig(curve_path)
-    plt.close()
+    plt.close('all')
 
 
 def visualize_W(W, save_file_path, epoch=-1, phase=1):
@@ -86,7 +87,8 @@ def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_inde
     ax.set_xlabel('Index')
     ax.set_ylabel('C_alpha')
     plt.savefig(C_alpha_path)
-    
+    plt.close('all')
+
     if len(dominating_C_alpha_index) > 0:
         plt.figure(figsize=(15, 6))
         plt.subplot(121)
@@ -98,7 +100,8 @@ def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_inde
         plt.title('Dominating C_alpha Index')
         plt.tight_layout()
         plt.savefig(curve_path)
-        plt.close()
+        plt.close('all')
+
 
 def check_dominate_C(C_alpha_list):
     C_alpha_list = torch.from_numpy(C_alpha_list)
