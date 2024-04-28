@@ -80,7 +80,7 @@ def visualize_params(W, C_alpha, save_file_path, epoch=-1, phase=1):
 
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
-parser.add_argument('--vocab-size',type=int,default=3)
+parser.add_argument('--vocab-size',type=int,default=10)
 parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--window-length',type=int, default=8)
 parser.add_argument('--n-heads',type=int, default=5)
@@ -93,12 +93,12 @@ parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--enable-wandb',type=bool,default=False)
 parser.add_argument('--dataset',type=str,default='NGram')
 parser.add_argument('--optim',type=str,default='adam')
-parser.add_argument('--w-plus',type=float,default=0.05)
+parser.add_argument('--w-plus',type=float,default=10)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--c-alpha',type=float,default=1)
 parser.add_argument('--alpha',type=float,default=0.3)
-parser.add_argument('--n-epochs',type=int,default=1000)
+parser.add_argument('--n-epochs',type=int,default=100)
 parser.add_argument('--n-gram',type=int,default=3)
 
 
@@ -159,54 +159,41 @@ else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
 
-data_path = f'./data/{dataset}'
+data_path = f'./data/{dataset}/vocab{S}-seq{L}-alpha{alpha}' if dataset == 'Markov' else f'./data/{dataset}/vocab{S}-seq{L}-n{n}-alpha{alpha}'
 makedirs(data_path)
 
 n_train, n_val = int(n_sample * 0.9), int(n_sample * 0.1)
 
 # Save the datasets
+if os.path.exists(f'{data_path}/train_set.pt'):
+    train_dataset = torch.load(f'{data_path}/train_set.pt')
+    val_dataset = torch.load(f'{data_path}/val_set.pt')
+else:  
+    dataset = MarkovDataset(S, L, alpha, n_sample)
+    # Split into train and validation sets
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [n_train, n_val])
+    torch.save(train_dataset, f'{data_path}/train_set.pt')
+    torch.save(val_dataset, f'{data_path}/val_set.pt')
 
-if dataset == 'Markov':
-    if os.path.exists(f'{data_path}/{n_sample}_train_set.pt'):
-        train_dataset = torch.load(f'{data_path}/{n_sample}_train_set.pt')
-        val_dataset = torch.load(f'{data_path}/{n_sample}_val_set.pt')
-    else:  
-        dataset = MarkovDataset(S, L, alpha, n_sample)
-        # Split into train and validation sets
-        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [n_train, n_val])
-        torch.save(train_dataset, f'{data_path}/{n_sample}_train_set.pt')
-        torch.save(val_dataset, f'{data_path}/{n_sample}_val_set.pt')
-else:
-    if os.path.exists(f'{data_path}/{n}_{n_sample}_train_set.pt'):
-        train_dataset = torch.load(f'{data_path}/{n}_{n_sample}_train_set.pt')
-        val_dataset = torch.load(f'{data_path}/{n}_{n_sample}_val_set.pt')
-    else:
-        dataset = NGramDataset(S, L, n, alpha, n_sample)
-        # Split into train and validation sets
-        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [n_train, n_val])
-        torch.save(train_dataset, f'{data_path}/{n}_{n_sample}_train_set.pt')
-        torch.save(val_dataset, f'{data_path}/{n}_{n_sample}_val_set.pt')
-  
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=False)
 
-
-
-
-
-eval_freq = 100
-
+eval_freq = 10
 
 # test before
 C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
 W = model.W.clone().cpu().detach().numpy()
 visualize_params(W, C_alpha_list, save_file_path, 'init', phase=1)
 
+assert model.a.requires_grad  # Should be True
+assert model.C_alpha_list.requires_grad  # Should be True
+assert model.W.requires_grad  # Should be True
+
 
 
 train_loss_list, val_loss_list, val_acc_list = [], [], []
 a_list = []
-pbar = tqdm(range(500),ncols=100,mininterval=1)
+pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
 for epoch in pbar:
     model.train()
@@ -221,6 +208,9 @@ for epoch in pbar:
         optimizer_1.step()
         # Update the learning rate
         # scheduler.step()
+        print("Gradient for a after backward:", model.a.grad)
+        print("Gradient for C_alpha_list after backward:", model.C_alpha_list.grad)
+
         pbar.set_description(f'Train loss:{loss.item():.10f}')
         wandb.log({'Train loss':loss.item()})    
         
@@ -234,7 +224,7 @@ for epoch in pbar:
         for x, y in val_loader:
             # assert not (torch.isnan(x).any() or torch.isnan(x).any())
             x, y = x.to(device), y.to(device)
-            logits = model(x) # [bs, 1, S]
+            logits = model(x) # [bs, S]
             loss = criterion(logits, y)
             eval_loss += loss.item()
              # Calculate accuracy
@@ -254,6 +244,8 @@ for epoch in pbar:
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1)
         draw_a_curve(a_list, save_file_path, phase=1)
         
+    # print(model.C_alpha_list.cpu().detach().numpy())
+    # print(a_list[-1])
 
 
 
@@ -281,7 +273,7 @@ for epoch in pbar:
         train_loss += loss.item()
     train_loss_list.append(train_loss / n_train)
 
-            
+
     model.eval()
     total_correct = 0
     with torch.no_grad():
@@ -301,7 +293,7 @@ for epoch in pbar:
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
         a_list.append(model.a.cpu().detach().numpy())
-        
+
     if epoch % eval_freq == 0:
         W = model.W.clone().cpu().detach().numpy()
         C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
