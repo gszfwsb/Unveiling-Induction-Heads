@@ -81,10 +81,10 @@ def visualize_params(W, C_alpha, save_file_path, epoch=-1, phase=1):
 
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
-parser.add_argument('--vocab-size',type=int,default=10)
-parser.add_argument('--seq-length',type=int, default=20)
-parser.add_argument('--window-length',type=int, default=8)
-parser.add_argument('--n-heads',type=int, default=5)
+parser.add_argument('--vocab-size',type=int,default=2)
+parser.add_argument('--seq-length',type=int, default=10)
+parser.add_argument('--window-length',type=int, default=5)
+parser.add_argument('--n-heads',type=int, default=3)
 parser.add_argument('--lr1',type=float, default=0.8)
 parser.add_argument('--lr2',type=float, default=0.8)
 parser.add_argument('--batch-size',type=int, default=100000)
@@ -169,8 +169,11 @@ n_train, n_val = int(n_sample * 0.9), int(n_sample * 0.1)
 if os.path.exists(f'{data_path}/train_set.pt'):
     train_dataset = torch.load(f'{data_path}/train_set.pt')
     val_dataset = torch.load(f'{data_path}/val_set.pt')
-else:  
-    dataset = MarkovDataset(S, L, alpha, n_sample)
+else:
+    if dataset == 'Markov':
+        dataset = MarkovDataset(S, L, alpha, n_sample)
+    else:
+        dataset = NGramDataset(S, L, n, alpha, n_sample)
     # Split into train and validation sets
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [n_train, n_val])
     torch.save(train_dataset, f'{data_path}/train_set.pt')
@@ -209,8 +212,6 @@ for epoch in pbar:
         optimizer_1.step()
         # Update the learning rate
         # scheduler.step()
-        print("Gradient for a after backward:", model.a.grad)
-        print("Gradient for C_alpha_list after backward:", model.C_alpha_list.grad)
 
         pbar.set_description(f'Train loss:{loss.item():.10f}')
         wandb.log({'Train loss':loss.item()})    

@@ -26,6 +26,7 @@ class TwoLayerTransformer(nn.Module):
         self.T = seq_length
         self.H = num_heads
         self.M = window_length
+        assert self.H <= self.M, 'Number of heads should be less than or equal to window length'
         # Assuming d_model is equal to input_dim
         self.d = vocab_size
         # layer 1: attention
@@ -72,7 +73,8 @@ class TwoLayerTransformer(nn.Module):
         for idx, (C_alpha, S_alpha) in enumerate(zip(self.C_alpha_list, self.S_alpha_list)):
             if len(S_alpha) == 0:
                 continue
-            product_term = torch.prod(torch.stack([torch.einsum('bd,bd->b',v_t[...,h], v_t_prime[..., h]) for h in S_alpha]))
+            support_S = torch.stack([torch.einsum('bd,bd->b',v_t[...,h], v_t_prime[..., h]) for h in S_alpha]) # |S_alpha| * ([bs, d] [bs, d] -> [bs]) -> [|S_alpha|, bs]
+            product_term = torch.prod(support_S, dim=0) # [bs]
             kernel_result += C_alpha**2 * product_term
         return kernel_result
 
@@ -83,11 +85,10 @@ class TwoLayerTransformer(nn.Module):
         # print('X_tilde:', X_tilde.shape)
         V = []
         for i in range(self.H):
-            W_h = torch.zeros((self.T+1, self.T+1)).to(X_tilde.device) # [T+1, T+1]
+            # W_h = torch.zeros((self.T+1, self.T+1)).to(X_tilde.device) # [T+1, T+1]
+            W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
             for j in range(self.T):
                 torch.diagonal(W_h, -j).fill_(self.W[:, i][j])  # Set the (j+1)-th negative diagonal
-            mask = torch.triu(torch.full_like(W_h, float('-inf')), diagonal=1)
-            W_h = W_h + mask
             W_h = F.softmax(W_h, dim=-1)
             v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
             v_h_normalized = self.norm(v_h)
@@ -97,7 +98,9 @@ class TwoLayerTransformer(nn.Module):
         V = torch.stack(V, -1) # [bs, T+1, d, (H+1)]
         kernel_prod = [] # [bs, T]
         for i in range(self.T):
-            kernel_prod.append(self.polynomial_kernel(V[:, -1], V[:, i])) # [bs, d, (H+1)], [bs, d, (H+1)] -> [bs]
-        kernel_prod = torch.tensor(kernel_prod).to(X.device) # [bs, T]
-        y = torch.matmul(F.softmax(self.a * kernel_prod, dim=-1), X) # [bs, T], [bs, T, d] -> [bs, d]
+            prod = self.polynomial_kernel(V[:, -1], V[:, i]) # [bs, d, (H+1)], [bs, d, (H+1)] -> [bs]
+            kernel_prod.append(prod) # [bs, T]
+        kernel_prod = torch.stack(kernel_prod, -1).to(X.device) # [bs, T]
+        kernel_prod = F.softmax(self.a * kernel_prod, dim=-1) # [bs, T]
+        y = torch.einsum('bt,btd->bd',kernel_prod, X) # [bs, T], [bs, T, d] -> [bs, d]
         return y
