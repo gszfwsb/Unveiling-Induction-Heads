@@ -9,10 +9,11 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 from model_B import TwoLayerTransformer
 from dataset import MarkovDataset, NGramDataset
-from tools import *
+from tools import makedirs, set_seed
 import argparse
 import wandb
 import os
+import numpy as np
 
 def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
