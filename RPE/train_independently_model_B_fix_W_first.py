@@ -11,7 +11,6 @@ from model_B import TwoLayerTransformer
 from dataset import MarkovDataset, NGramDataset
 from tools import makedirs, set_seed
 import argparse
-import wandb
 import os
 import numpy as np
 
@@ -70,19 +69,48 @@ def draw_a_curve(a_list, save_file_path, phase=1):
     plt.close()
 
 
-def visualize_params(W, C_alpha, save_file_path, epoch=-1, phase=1):
+def visualize_W(W, save_file_path, epoch=-1, phase=1):
     W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
-    C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
     W_thres = max(W.max(),abs(W.min()))
     draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
-    C_alpha_thres = max(C_alpha.max(),abs(C_alpha.min()))
-    draw_heatmap(C_alpha, C_alpha_path, vmin=-C_alpha_thres,vmax=C_alpha_thres)
 
+def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch=-1, phase=1):
+    C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
+    curve_path = f"{save_file_path}/phase{phase}_C_dominance_curve.png"
+    C_alpha_sqaure = C_alpha ** 2
+    draw_heatmap(C_alpha, C_alpha_path, vmin=0,vmax=C_alpha_sqaure.max())
+    if len(dominating_C_alpha_index) > 0:
+        plt.figure(figsize=(15, 6))
+        plt.subplot(121)
+        x = list(range(len(dominating_C_alpha_value)))
+        plt.plot(x,dominating_C_alpha_value)
+        plt.title('Dominating C_alpha Value')
+        plt.subplot(122)
+        plt.plot(x,dominating_C_alpha_index)
+        plt.title('Dominating C_alpha Index')
+        plt.tight_layout()
+        plt.savefig(curve_path)
+        plt.close()
+
+def check_dominate_C(C_alpha_list):
+    C_alpha_list = torch.from_numpy(C_alpha_list)
+    # Calculate the sum of the squares of C_alpha_list
+    sum_of_squares = torch.sum(C_alpha_list ** 2)
+    # Check for dominance for each c_alpha
+    dominance = (C_alpha_list ** 2) / sum_of_squares
+    # Find which c_alpha is dominating
+    max_index = torch.argmax(dominance)
+    # Check if c_alpha dominates or not
+    is_dominating = dominance[max_index] >= 0.4  # Threshold of 0.5 is arbitrary, adjust as needed
+    # Optionally, check if it grows exponentially faster
+    # This would require historical data to compare the growth rate
+    dominance_value = dominance[max_index]
+    return is_dominating, max_index, dominance_value
 
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
-parser.add_argument('--vocab-size',type=int,default=2)
-parser.add_argument('--seq-length',type=int, default=10)
+parser.add_argument('--vocab-size',type=int,default=3)
+parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--window-length',type=int, default=5)
 parser.add_argument('--n-heads',type=int, default=3)
 parser.add_argument('--lr1',type=float, default=0.8)
@@ -91,15 +119,14 @@ parser.add_argument('--batch-size',type=int, default=100000)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--n-sample',type=int,default=10000)
 parser.add_argument('--device',type=str, default='cuda:0')
-parser.add_argument('--enable-wandb',type=bool,default=False)
 parser.add_argument('--dataset',type=str,default='NGram')
 parser.add_argument('--optim',type=str,default='adam')
-parser.add_argument('--w-plus',type=float,default=10)
+parser.add_argument('--w-plus',type=float,default=1)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--c-alpha',type=float,default=1)
 parser.add_argument('--alpha',type=float,default=0.3)
-parser.add_argument('--n-epochs',type=int,default=100)
+parser.add_argument('--n-epochs',type=int,default=10000)
 parser.add_argument('--n-gram',type=int,default=3)
 
 
@@ -128,19 +155,10 @@ ignore_idx = -100
 n = args.n_gram
 c_alpha_init = args.c_alpha
 
-if not args.enable_wandb:
-    os.environ['WANDB_MODE'] = 'disabled'
-
-# wandb init
-wandb.init(project='In-Context-Learning-0427model', 
-           entity='shaobowang', 
-           name=f'Independently_{dataset}_parent{n}_bs{bs}_L{L}_S{S}_{optim_method}_lr1{lr1}_lr2{lr2}',
-           config=vars(args)
-)
 
 # Define the file paths
 root_path = './data'
-save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
+save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}/fix_W_first'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
@@ -182,12 +200,14 @@ else:
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=False)
 
-eval_freq = 10
+eval_freq = min(n_epochs // 10, 100)
 
 # test before
 C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
 W = model.W.clone().cpu().detach().numpy()
-visualize_params(W, C_alpha_list, save_file_path, 'init', phase=1)
+visualize_W(W, save_file_path, 'init', phase=1)
+visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1)
+
 
 assert model.a.requires_grad  # Should be True
 assert model.C_alpha_list.requires_grad  # Should be True
@@ -197,6 +217,7 @@ assert model.W.requires_grad  # Should be True
 
 train_loss_list, val_loss_list, val_acc_list = [], [], []
 a_list = []
+dominating_C_alpha_index, dominating_C_alpha_value = [], []
 pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
 for epoch in pbar:
@@ -214,7 +235,6 @@ for epoch in pbar:
         # scheduler.step()
 
         pbar.set_description(f'Train loss:{loss.item():.10f}')
-        wandb.log({'Train loss':loss.item()})    
         
         train_loss += loss.item()
     
@@ -234,21 +254,19 @@ for epoch in pbar:
             total_correct += (predicted.squeeze() == y).sum().item()
             # scheduler.step()
             pbar.set_description(f'Val loss:{loss.item():.10f}')
-            wandb.log({'Val loss':loss.item()})
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
         a_list.append(model.a.cpu().detach().numpy())
-    
+        _, max_index, dominance_value = check_dominate_C(model.C_alpha_list.cpu().detach().numpy())
+        dominating_C_alpha_index.append(max_index)
+        dominating_C_alpha_value.append(dominance_value)
     if epoch % eval_freq == 0:
-        W = model.W.clone().cpu().detach().numpy()
         C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
-        visualize_params(W, C_alpha_list, save_file_path, epoch, phase=1)
+        visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1)
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1)
         draw_a_curve(a_list, save_file_path, phase=1)
-        
     # print(model.C_alpha_list.cpu().detach().numpy())
     # print(a_list[-1])
-
 
 
 # train W second
@@ -271,7 +289,6 @@ for epoch in pbar:
         # Update the learning rate
         # scheduler.step()
         pbar.set_description(f'Train loss:{loss.item():.10f}')
-        wandb.log({'Train loss':loss.item()})    
         train_loss += loss.item()
     train_loss_list.append(train_loss / n_train)
 
@@ -291,23 +308,18 @@ for epoch in pbar:
             total_correct += (predicted.squeeze() == y).sum().item()
             # scheduler.step()
             pbar.set_description(f'Val loss:{loss.item():.10f}')
-            wandb.log({'Val loss':loss.item()})
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
         a_list.append(model.a.cpu().detach().numpy())
 
     if epoch % eval_freq == 0:
         W = model.W.clone().cpu().detach().numpy()
-        C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
-        visualize_params(W, C_alpha_list, save_file_path, epoch, phase=2)
+        visualize_W(W, save_file_path, epoch, phase=2)
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2)
-        draw_a_curve(a_list, save_file_path, phase=2)
 
 W = model.W.clone().cpu().detach().numpy()
 C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
-visualize_params(W, C_alpha_list, save_file_path, 'end', phase=2)
+visualize_W(W, save_file_path, 'end', phase=2)
+visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=2)
 draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2)
 draw_a_curve(a_list, save_file_path, phase=2)
-
-# Finish the wandb run
-wandb.finish()
