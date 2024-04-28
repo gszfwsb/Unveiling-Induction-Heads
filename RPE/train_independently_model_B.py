@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
-from model_A import TwoLayerTransformer
+from model_B import TwoLayerTransformer
 from dataset import MarkovDataset, NGramDataset
 from tools import *
 import argparse
@@ -26,6 +26,8 @@ def normalize_data(data):
 
 def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5, normalize=False):
     # Create a heatmap using matplotlib and your desired colormap
+    if len(data.shape) == 1:
+        data = data.reshape(-1, 1)
     if normalize:
         data = normalize_data(data)
     # print(data.shape)
@@ -38,7 +40,7 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5, normalize=False):
     # Close plt figure to free memory
     plt.close()
 
-def draw_curves(train_data, val_data, val_acc, save_file_path, data_type='train', phase=1):
+def draw_curves(train_data, val_data, val_acc, save_file_path, phase=1):
     curve_path = f"{save_file_path}/phase{phase}_curve.png"
     plt.figure(figsize=(15, 6))
     x = list(range(len(train_data)))
@@ -57,18 +59,28 @@ def draw_curves(train_data, val_data, val_acc, save_file_path, data_type='train'
     # Close plt figure to free memory
     plt.close()
 
-def visualize_params(W, A, save_file_path, epoch=-1, phase=1):
+def draw_a_curve(a_list, save_file_path, phase=1):
+    curve_path = f"{save_file_path}/phase{phase}_a_curve.png"
+    plt.figure(figsize=(6, 6))
+    x = list(range(len(a_list)))
+    plt.plot(x,a_list)
+    plt.title('a')
+    plt.savefig(curve_path)
+    plt.close()
+
+
+def visualize_params(W, C_alpha, save_file_path, epoch=-1, phase=1):
     W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
-    A_path = f"{save_file_path}/phase{phase}_A_{epoch}.png"
+    C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
     W_thres = max(W.max(),abs(W.min()))
     draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
-    A_thres = max(W.max(),abs(W.min()))
-    draw_heatmap(A, A_path, vmin=-A_thres,vmax=A_thres)
+    C_alpha_thres = max(C_alpha.max(),abs(C_alpha.min()))
+    draw_heatmap(C_alpha, C_alpha_path, vmin=-C_alpha_thres,vmax=C_alpha_thres)
 
 
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
-parser.add_argument('--vocab-size',type=int,default=10)
+parser.add_argument('--vocab-size',type=int,default=3)
 parser.add_argument('--seq-length',type=int, default=20)
 parser.add_argument('--window-length',type=int, default=8)
 parser.add_argument('--n-heads',type=int, default=5)
@@ -84,6 +96,7 @@ parser.add_argument('--optim',type=str,default='adam')
 parser.add_argument('--w-plus',type=float,default=0.05)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
+parser.add_argument('--c-alpha',type=float,default=1)
 parser.add_argument('--alpha',type=float,default=0.3)
 parser.add_argument('--n-epochs',type=int,default=1000)
 parser.add_argument('--n-gram',type=int,default=3)
@@ -100,7 +113,7 @@ H = args.n_heads
 M = args.window_length
 w_plus = args.w_plus
 w_minus = args.w_minus
-a = args.a
+a_init = args.a
 # training setting
 bs = args.batch_size
 n_sample = args.n_sample
@@ -112,12 +125,13 @@ n_epochs = args.n_epochs
 alpha = args.alpha
 ignore_idx = -100 
 n = args.n_gram
+c_alpha_init = args.c_alpha
 
 if not args.enable_wandb:
     os.environ['WANDB_MODE'] = 'disabled'
 
 # wandb init
-wandb.init(project='In-Context-Learning-0409model', 
+wandb.init(project='In-Context-Learning-0427model', 
            entity='shaobowang', 
            name=f'Independently_{dataset}_parent{n}_bs{bs}_L{L}_S{S}_{optim_method}_lr1{lr1}_lr2{lr2}',
            config=vars(args)
@@ -125,22 +139,22 @@ wandb.init(project='In-Context-Learning-0409model',
 
 # Define the file paths
 root_path = './data'
-save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_a{a}-alpha{alpha}_n-epochs{n_epochs}'
+save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
-model = TwoLayerTransformer(S, L, H, M, w_plus, w_minus, a)
+model = TwoLayerTransformer(S, L, H, M, w_plus, w_minus, a_init, c_alpha_init)
 model.to(device)
 
 criterion = population_loss(ignore_idx)
  
 # define optimizers and schedulars
 if optim_method == 'sgd':
-    optimizer_W = optim.SGD([model.W], lr=lr1)
-    optimizer_A = optim.SGD([model.A], lr=lr2)
+    optimizer_1 = optim.SGD([model.a, model.C_alpha_list], lr=lr1)
+    optimizer_2 =  optim.SGD([model.W], lr=lr2)
 elif optim_method == 'adam':
-    optimizer_W = optim.Adam([model.W], lr=lr1)
-    optimizer_A = optim.Adam([model.A], lr=lr2)
+    optimizer_1 = optim.Adam([model.a, model.C_alpha_list], lr=lr1)
+    optimizer_2 = optim.Adam([model.W], lr=lr2)
 else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
@@ -184,14 +198,14 @@ eval_freq = 100
 
 
 # test before
-A = model.A.clone().cpu().detach().numpy()
+C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
 W = model.W.clone().cpu().detach().numpy()
-visualize_params(W, A, save_file_path, 'init', phase=1)
+visualize_params(W, C_alpha_list, save_file_path, 'init', phase=1)
 
 
-# train W first
+
 train_loss_list, val_loss_list, val_acc_list = [], [], []
-
+a_list = []
 pbar = tqdm(range(500),ncols=100,mininterval=1)
 
 for epoch in pbar:
@@ -200,11 +214,11 @@ for epoch in pbar:
     for x, y in train_loader:
         # assert not (torch.isnan(x).any() or torch.isnan(x).any())
         x, y = x.to(device), y.to(device)
-        optimizer_W.zero_grad()
+        optimizer_1.zero_grad()
         logits = model(x) # [bs, S]
         loss = criterion(logits, y)
         loss.backward()
-        optimizer_W.step()
+        optimizer_1.step()
         # Update the learning rate
         # scheduler.step()
         pbar.set_description(f'Train loss:{loss.item():.10f}')
@@ -223,7 +237,6 @@ for epoch in pbar:
             logits = model(x) # [bs, 1, S]
             loss = criterion(logits, y)
             eval_loss += loss.item()
-            # Update the learning rate
              # Calculate accuracy
             predicted = torch.argmax(logits, dim=-1)  # Get the index of the max log-probability
             total_correct += (predicted.squeeze() == y).sum().item()
@@ -232,18 +245,21 @@ for epoch in pbar:
             wandb.log({'Val loss':loss.item()})
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
-
+        a_list.append(model.a.cpu().detach().numpy())
     
     if epoch % eval_freq == 0:
-        A = model.A.clone().cpu().detach().numpy()
         W = model.W.clone().cpu().detach().numpy()
-        visualize_params(W, A, save_file_path, epoch, phase=1)
+        C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
+        visualize_params(W, C_alpha_list, save_file_path, epoch, phase=1)
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1)
+        draw_a_curve(a_list, save_file_path, phase=1)
+        
 
 
 
-# train A second
+# train W second
 train_loss_list, val_loss_list, val_acc_list = [], [], []
+a_list = []
 
 pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
@@ -253,18 +269,16 @@ for epoch in pbar:
     for x, y in train_loader:
         # assert not (torch.isnan(x).any() or torch.isnan(x).any())
         x, y = x.to(device), y.to(device)
-        optimizer_A.zero_grad()
+        optimizer_2.zero_grad()
         logits = model(x) # [bs, S]
         loss = criterion(logits, y)
         loss.backward()
-        optimizer_A.step()
+        optimizer_2.step()
         # Update the learning rate
         # scheduler.step()
         pbar.set_description(f'Train loss:{loss.item():.10f}')
         wandb.log({'Train loss':loss.item()})    
-        
         train_loss += loss.item()
-    
     train_loss_list.append(train_loss / n_train)
 
             
@@ -286,18 +300,20 @@ for epoch in pbar:
             wandb.log({'Val loss':loss.item()})
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
-
-    
+        a_list.append(model.a.cpu().detach().numpy())
+        
     if epoch % eval_freq == 0:
-        A = model.A.clone().cpu().detach().numpy()
         W = model.W.clone().cpu().detach().numpy()
-        visualize_params(W, A, save_file_path, epoch, phase=2)
+        C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
+        visualize_params(W, C_alpha_list, save_file_path, epoch, phase=2)
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2)
+        draw_a_curve(a_list, save_file_path, phase=2)
 
-
-
-visualize_params(W, A, save_file_path, 'end', phase=2)
+W = model.W.clone().cpu().detach().numpy()
+C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
+visualize_params(W, C_alpha_list, save_file_path, 'end', phase=2)
 draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2)
+draw_a_curve(a_list, save_file_path, phase=2)
 
 # Finish the wandb run
 wandb.finish()

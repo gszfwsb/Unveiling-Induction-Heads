@@ -61,16 +61,18 @@ class NGramDataset(Dataset):
         print('Generating datasets...')
         for _ in range(n_sample):
             self.sample()  # regenerate pi
-            sequence = torch.empty(self.L + 1, dtype=torch.long)
+            sequence = torch.empty(self.L, dtype=torch.long)
             sequence[:self.n-1] = dist.Categorical(probs=torch.ones(self.S) / self.S).sample((self.n-1,)) # uniformly sample
-            for i in range(self.n-1, self.L + 1):
+            for i in range(self.n-1, self.L):
                 # Condition on the previous n-1 states
                 context = sequence[i-self.n+1:i]
                 context_idx = self.context_to_index(context)
                 sequence[i] = dist.Categorical(probs=self.pi[context_idx]).sample()
             # The input sequence x is the sequence up to L, and the target y is the next state
-            x = F.one_hot(sequence[:-1], num_classes=self.S).float() # length L
-            y = sequence[-1] # length 1
+            x = F.one_hot(sequence, num_classes=self.S).float() # length L
+            y_context = dist.Categorical(probs=torch.ones(self.S) / self.S).sample((self.n-1,)) # uniformly sample
+            y_context_idx = self.context_to_index(y_context)
+            y = dist.Categorical(probs=self.pi[y_context_idx]).sample()
             self.samples.append((x, y))
 
     def context_to_index(self, context):
