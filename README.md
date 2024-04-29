@@ -28,4 +28,6 @@ cd ./RPE
 python train_independently_model_B_fix_a_first.py
 # train C_alpha and a in the first phase, train W in the second phase
 python train_independently_model_B_fix_W_first.py
+# train C_alpha in the first phase, train W and a in the second phase
+python train_independently_model_B_fix_a_W_first.py
 ```
