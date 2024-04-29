@@ -33,7 +33,7 @@ parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--c-alpha',type=float,default=1)
 parser.add_argument('--alpha',type=float,default=0.3)
-parser.add_argument('--n-epochs',type=int,default=10000)
+parser.add_argument('--n-epochs',type=int,default=5000)
 parser.add_argument('--n-gram',type=int,default=3)
 
 
@@ -84,6 +84,8 @@ elif optim_method == 'adam':
 else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
+lr_scheduler1 = optim.lr_scheduler.StepLR(optimizer_1, step_size=n_epochs//10, gamma=0.5)
+lr_scheduler2 = optim.lr_scheduler.StepLR(optimizer_2, step_size=n_epochs//10, gamma=0.5)
 
 data_path = f'./data/{dataset}/vocab{S}-seq{L}-alpha{alpha}' if dataset == 'Markov' else f'./data/{dataset}/vocab{S}-seq{L}-n{n}-alpha{alpha}'
 makedirs(data_path)
@@ -139,7 +141,7 @@ for epoch in pbar:
         loss.backward()
         optimizer_1.step()
         # Update the learning rate
-        # scheduler.step()
+        lr_scheduler1.step()
 
         pbar.set_description(f'Train loss:{loss.item():.10f}')
         
@@ -194,7 +196,7 @@ for epoch in pbar:
         loss.backward()
         optimizer_2.step()
         # Update the learning rate
-        # scheduler.step()
+        lr_scheduler2.step()
         pbar.set_description(f'Train loss:{loss.item():.10f}')
         train_loss += loss.item()
     train_loss_list.append(train_loss / n_train)

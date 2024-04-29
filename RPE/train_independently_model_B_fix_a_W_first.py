@@ -29,7 +29,7 @@ parser.add_argument('--n-sample',type=int,default=10000)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--dataset',type=str,default='NGram')
 parser.add_argument('--optim',type=str,default='adam')
-parser.add_argument('--w-plus',type=float,default=1)
+parser.add_argument('--w-plus',type=float,default=100)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--c-alpha',type=float,default=1)
@@ -66,7 +66,7 @@ c_alpha_init = args.c_alpha
 
 # Define the file paths
 root_path = './data'
-save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}/fix_W_first'
+save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}/fix_a_W_first'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
@@ -77,12 +77,12 @@ criterion = population_loss(ignore_idx)
  
 # define optimizers and schedulars
 if optim_method == 'sgd':
-    optimizer_1 = optim.SGD([model.a, model.C_alpha_list], lr=lr1)
-    optimizer_2 =  optim.SGD([model.W], lr=lr2)
+    optimizer_1 = optim.SGD([model.C_alpha_list], lr=lr1)
+    optimizer_2 =  optim.SGD([model.a, model.W], lr=lr2)
 
 elif optim_method == 'adam':
-    optimizer_1 = optim.Adam([model.a, model.C_alpha_list], lr=lr1)
-    optimizer_2 = optim.Adam([model.W], lr=lr2)
+    optimizer_1 = optim.Adam([model.C_alpha_list], lr=lr1)
+    optimizer_2 = optim.Adam([model.a, model.W], lr=lr2)
 else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
@@ -128,7 +128,6 @@ assert model.W.requires_grad  # Should be True
 
 
 train_loss_list, val_loss_list, val_acc_list = [], [], []
-a_list = []
 dominating_C_alpha_index, dominating_C_alpha_value = [], []
 pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
@@ -168,7 +167,6 @@ for epoch in pbar:
             pbar.set_description(f'Val loss:{loss.item():.10f}')
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
-        a_list.append(model.a.cpu().detach().numpy())
         _, max_index, dominance_value = check_dominate_C(model.C_alpha_list.cpu().detach().numpy())
         dominating_C_alpha_index.append(max_index)
         dominating_C_alpha_value.append(dominance_value)
@@ -176,7 +174,6 @@ for epoch in pbar:
         C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
         visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1)
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1)
-        draw_a_curve(a_list, save_file_path, phase=1)
     # print(model.C_alpha_list.cpu().detach().numpy())
     # print(a_list[-1])
 
@@ -228,6 +225,8 @@ for epoch in pbar:
         W = model.W.clone().cpu().detach().numpy()
         visualize_W(W, save_file_path, epoch, phase=2)
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2)
+        draw_a_curve(a_list, save_file_path, phase=2)
+
 
 W = model.W.clone().cpu().detach().numpy()
 C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
