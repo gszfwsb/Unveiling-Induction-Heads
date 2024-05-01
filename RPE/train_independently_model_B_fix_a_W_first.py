@@ -146,7 +146,6 @@ assert model.W.requires_grad  # Should be True
 train_loss_list, val_loss_list, val_acc_list = [], [], []
 dominating_C_alpha_index, dominating_C_alpha_value = [], []
 pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
-
 for epoch in pbar:
     model.train()
     train_loss, eval_loss = 0, 0
@@ -164,7 +163,10 @@ for epoch in pbar:
         pbar.set_description(f'Train loss:{loss.item():.10f}')
         
         train_loss += loss.item()
-    
+        C_alpha_grad = model.C_alpha_list.grad.clone().detach().cpu().numpy()
+        C_alpha_grad = np.abs(C_alpha_grad)
+        visualize_C_alpha_grad(C_alpha_grad,  save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
+
     train_loss_list.append(train_loss / n_train)
 
     model.eval()
@@ -215,6 +217,8 @@ for epoch in pbar:
         lr_scheduler2.step()
         pbar.set_description(f'Train loss:{loss.item():.10f}')
         train_loss += loss.item()
+
+
     train_loss_list.append(train_loss / n_train)
 
 
