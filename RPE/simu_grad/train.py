@@ -5,12 +5,12 @@ import torch.nn as nn
 from tqdm import tqdm, trange
 from tools import plot_hist
 
-S, L, n_language, alpha, n_sample, H = 3, 100, 3, 0.3, 1000, 3
+S, L, n_language, alpha, n_sample, H = 3, 500, 3, 0.3, 10000, 3
 n = n_language - 1
-bs, n_epochs = 1000, 5000
+bs, n_epochs = 10000, 5000
 power = 2
 
-dataset = NGramDataset(S, L, n_language, alpha, n_sample)
+dataset = NGramDataset(S, L, n_language, alpha, n_sample, output=True)
 model = toyModel(H=2, dim=S)
 
 # pass one batch through the model

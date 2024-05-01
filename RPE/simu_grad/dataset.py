@@ -103,3 +103,5 @@ class NGramDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.samples[idx]
+
+    
