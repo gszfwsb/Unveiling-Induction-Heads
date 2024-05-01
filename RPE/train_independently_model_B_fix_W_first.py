@@ -14,7 +14,7 @@ import argparse
 import os
 import numpy as np
 from tools_model_B import *
-
+import wandb
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=3)
@@ -29,17 +29,22 @@ parser.add_argument('--n-sample',type=int,default=10000)
 parser.add_argument('--device',type=str, default='cuda:0')
 parser.add_argument('--dataset',type=str,default='NGram')
 parser.add_argument('--optim',type=str,default='adam')
-parser.add_argument('--w-plus',type=float,default=1)
+parser.add_argument('--w-plus',type=float,default=100)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--c-alpha',type=float,default=1)
-parser.add_argument('--alpha',type=float,default=0.3)
+parser.add_argument('--alpha',type=float,default=0.1)
 parser.add_argument('--n-epochs',type=int,default=5000)
 parser.add_argument('--n-gram',type=int,default=3)
+parser.add_argument('--enable-wandb',type=bool,default=False)
 
 
 args = parser.parse_args()
 
+
+enable_wandb = args.enable_wandb
+if not enable_wandb:
+    os.environ['WANDB_MODE'] = 'disabled'
 
 set_seed(args.seed)
 device = args.device
@@ -90,8 +95,8 @@ else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
 
-lr_scheduler1 = optim.lr_scheduler.StepLR(optimizer_1, step_size=n_epochs//10, gamma=0.5)
-lr_scheduler2 = optim.lr_scheduler.StepLR(optimizer_2, step_size=n_epochs//10, gamma=0.5)
+lr_scheduler1 = optim.lr_scheduler.StepLR(optimizer_1, step_size=n_epochs//10, gamma=0.5, last_epoch=-1)
+lr_scheduler2 = optim.lr_scheduler.StepLR(optimizer_2, step_size=n_epochs//10, gamma=0.5, last_epoch=-1)
 
 data_path = f'./data/{dataset}/vocab{S}-seq{L}-alpha{alpha}' if dataset == 'Markov' else f'./data/{dataset}/vocab{S}-seq{L}-n{n}-alpha{alpha}'
 makedirs(data_path)
@@ -117,11 +122,20 @@ val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=Fal
 
 eval_freq = min(n_epochs // 10, 100)
 
+
+
+# wandb init
+wandb.init(project='ICL', 
+           entity='Transformer-n-grams', 
+           name=f'{train_scheme}-{method_args}',
+           config=vars(args)
+)
+
 # test before
 C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
 W = model.W.clone().cpu().detach().numpy()
-visualize_W(W, save_file_path, 'init', phase=1)
-visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1)
+visualize_W(W, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
+visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
 
 
 assert model.a.requires_grad  # Should be True
@@ -129,12 +143,7 @@ assert model.C_alpha_list.requires_grad  # Should be True
 assert model.W.requires_grad  # Should be True
 
 
-# wandb init
-wandb.init(project='ICL', 
-           entity='Transformer-n-grams', 
-           name=f'{method_args}-{train_scheme}',
-           config=vars(args)
-)
+
 
 
 train_loss_list, val_loss_list, val_acc_list = [], [], []
@@ -184,9 +193,9 @@ for epoch in pbar:
         dominating_C_alpha_value.append(dominance_value)
     if epoch % eval_freq == 0:
         C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
-        visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1)
-        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1)
-        draw_a_curve(a_list, save_file_path, phase=1)
+        visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
+        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
+        draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=enable_wandb)
     # print(model.C_alpha_list.cpu().detach().numpy())
     # print(a_list[-1])
 
@@ -236,12 +245,12 @@ for epoch in pbar:
 
     if epoch % eval_freq == 0:
         W = model.W.clone().cpu().detach().numpy()
-        visualize_W(W, save_file_path, epoch, phase=2)
-        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2)
+        visualize_W(W, save_file_path, epoch, phase=2,enable_wandb=enable_wandb)
+        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2,enable_wandb=enable_wandb)
 
 W = model.W.clone().cpu().detach().numpy()
 C_alpha_list = model.C_alpha_list.clone().cpu().detach().numpy()
-visualize_W(W, save_file_path, 'end', phase=2)
-visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=2)
-draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2)
-draw_a_curve(a_list, save_file_path, phase=2)
+visualize_W(W, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
+visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
+draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2,enable_wandb=enable_wandb)
+draw_a_curve(a_list, save_file_path, phase=2,enable_wandb=enable_wandb)

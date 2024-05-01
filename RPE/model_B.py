@@ -94,7 +94,7 @@ class TwoLayerTransformer(nn.Module):
             v_h_normalized = self.norm(v_h)
             V.append(v_h_normalized)
             # print('v_h_normalized:', v_h_normalized.shape)
-        V.append(X_tilde) # [bs, T+1, d, (H+1)]
+        # V.append(X_tilde) # [bs, T+1, d, (H+1)] # TODO: remove X_tilde
         V = torch.stack(V, -1) # [bs, T+1, d, (H+1)]
         kernel_prod = [] # [bs, T]
         for i in range(self.T):

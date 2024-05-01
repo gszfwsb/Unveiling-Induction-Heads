@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch
 import wandb
+from PIL import Image
 
 
 def population_loss(ignore_idx):
@@ -31,7 +32,7 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5, normalize=False):
     # Close plt figure to free memory
     plt.close()
 
-def draw_curves(train_data, val_data, val_acc, save_file_path, phase=1):
+def draw_curves(train_data, val_data, val_acc, save_file_path, phase=1,enable_wandb=False):
     curve_path = f"{save_file_path}/phase{phase}_curve.png"
     plt.figure(figsize=(15, 6))
     x = list(range(len(train_data)))
@@ -49,9 +50,11 @@ def draw_curves(train_data, val_data, val_acc, save_file_path, phase=1):
     plt.savefig(curve_path)
     # Close plt figure to free memory
     plt.close('all')
+    if enable_wandb:
+        image = Image.open(curve_path)
+        wandb.log({"Learning Dynamics": wandb.Image(image)})
 
-
-def draw_a_curve(a_list, save_file_path, phase=1):
+def draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=False):
     curve_path = f"{save_file_path}/phase{phase}_a_curve.png"
     plt.figure(figsize=(6, 6))
     x = list(range(len(a_list)))
@@ -59,14 +62,22 @@ def draw_a_curve(a_list, save_file_path, phase=1):
     plt.title('a')
     plt.savefig(curve_path)
     plt.close('all')
+    if enable_wandb:
+        image = Image.open(curve_path)
+        wandb.log({"a": wandb.Image(image)})
 
 
-def visualize_W(W, save_file_path, epoch=-1, phase=1):
+
+def visualize_W(W, save_file_path, epoch=-1, phase=1,enable_wandb=False):
     W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
     W_thres = max(W.max(),abs(W.min()))
     draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
+    if enable_wandb:
+        image = Image.open(W_path)
+        wandb.log({"W": wandb.Image(image)})
 
-def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch=-1, phase=1):
+
+def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch=-1, phase=1,enable_wandb=False):
     C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
     curve_path = f"{save_file_path}/phase{phase}_C_dominance_curve.png"
     C_alpha_sqaure = C_alpha ** 2
@@ -79,6 +90,10 @@ def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_inde
     ax.set_ylabel('C_alpha')
     plt.savefig(C_alpha_path)
     plt.close('all')
+
+    if enable_wandb:
+        image = Image.open(C_alpha_path)
+        wandb.log({"C_alpha Bar": wandb.Image(image)})
 
     if len(dominating_C_alpha_index) > 0:
         plt.figure(figsize=(15, 6))
@@ -93,6 +108,9 @@ def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_inde
         plt.savefig(curve_path)
         plt.close('all')
 
+        if enable_wandb:
+            image = Image.open(curve_path)
+            wandb.log({"Dominating C_alpha Index": wandb.Image(image)})
 
 def check_dominate_C(C_alpha_list):
     C_alpha_list = torch.from_numpy(C_alpha_list)
