@@ -2,7 +2,7 @@ import torch
 import torch.distributions as dist
 import torch.nn.functional as F
 from torch.utils.data import Dataset
-
+from typing import Any, Dict
 
 
 class MarkovDataset(Dataset):
@@ -58,31 +58,27 @@ class NGramDataset(Dataset):
         self.n_sample = n_sample
         self.dirichlet_distribution = dist.Dirichlet(torch.full((S,), alpha))
         self.mu_pi = torch.ones(self.S) / self.S # uniformly
-        self.samples = torch.empty(self.n_sample, self.L + 1, dtype = torch.float)
+        self.samples = torch.empty(self.n_sample, self.L + 1, dtype = torch.long)
         if output:
             print('Generating datasets...')
-        for _ in range(n_sample):
+        for j in range(n_sample):
             self.sample()  # regenerate pi
-            sequence = torch.empty(self.L, dtype=torch.long)
+            sequence = torch.empty(self.L + 1, dtype=torch.long)
             sequence[:self.n-1] = dist.Categorical(probs=self.mu_pi).sample((self.n-1,)) # uniformly sample
             for i in range(self.n-1, self.L + 1):
                 # Condition on the previous n-1 states
                 context = sequence[i-self.n+1:i]
                 context_idx = self.context_to_index(context)
                 sequence[i] = dist.Categorical(probs=self.pi[context_idx]).sample()
-            # The input sequence x is the sequence up to L, and the target y is the next state
-            x = F.one_hot(sequence, num_classes=self.S).float() # length L
-            y_context = dist.Categorical(probs=self.mu_pi).sample((self.n-1,)) # uniformly sample
-            y_context_idx = self.context_to_index(y_context)
-            y = dist.Categorical(probs=self.pi[y_context_idx]).sample()
-            self.samples.append((x, y))
+            self.samples[j] = sequence
+            
 
     def context_to_index(self, context):
         # Convert a sequence context to an index for accessing the transition matrix
         # This assumes that context is a tensor of indices
         index = 0
         for i, state in enumerate(context.flip(0)):
-            index += state * (self.S ** i)
+            index += state * (self.S ** (len(context) - 1 - i))
         return index
 
     def sample_transition(self):
@@ -102,5 +98,21 @@ class NGramDataset(Dataset):
         self.pi = self.sample_transition()
 
     def __getitem__(self, idx):
-        return self.samples[idx]
+        samples = self.samples[idx]
+        # The input sequence x is the sequence up to L, and the target y is the next state
+        return self.__transform__(samples)
+    
+    def __transform__(self, x: Any, **kwargs) -> Any:
+        """
+        Transform the data for training, validation, and testing.
 
+        Args:
+            x (Any): The data.
+
+        Returns:
+            Any: The transformed data.
+        """
+        x = F.one_hot(x, num_classes=self.S).float()
+        y = x[..., -1, :].clone() # remember to clone the tensor!!!
+        x = x[..., :-1, :]
+        return x, y

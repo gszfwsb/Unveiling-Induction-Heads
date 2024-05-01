@@ -146,6 +146,6 @@ def chi_square_mutual_info(joint_dist, power=1):
     joint_dist_parent = joint_dist.sum(dim=0, keepdim=True)
     return ((((joint_dist / joint_dist_parent) ** 2 / marginal_dist).sum(dim=0, keepdim=True) - 1) * joint_dist_parent**power).sum()
 
-def chi_square_mutual_info_support(support, mu_prod_pi, power=1):
+def chi_square_mutual_info_support(support, mu_prod_pi, S, n, power=1):
     mu_extended = get_stationary_multi_support(mu_prod_pi, support, S, n)
     return chi_square_mutual_info(mu_extended, power)

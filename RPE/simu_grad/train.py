@@ -5,12 +5,18 @@ import torch.nn as nn
 from tqdm import tqdm, trange
 from tools import plot_hist
 
-S, L, n_language, alpha, n_sample, H = 3, 500, 3, 0.3, 10000, 3
-n = n_language - 1
-bs, n_epochs = 10000, 5000
+S = 3
+L = 500
+n_language = 3
+alpha = 0.3
+n_sample = 5000
+H = 3
 power = 2
+bs, n_epochs = 5000, 1
 
-model = toyModel(H=2, dim=S)
+
+n = n_language - 1
+model = toyModel(H=H, dim=S)
 
 
 # training loop
@@ -36,4 +42,4 @@ for epoch in pbar:
         pbar.set_description(f"Loss: {loss.item():.4f}")
 
 # plot the histogram of the weights 
-plot_hist(model.Encoder.coeff.data.detach().cpu(), 2, n, title='coeff')
+plot_hist(model.Encoder.coeff.grad.detach().cpu(), 2, H, title='coeff_grad')
