@@ -1,0 +1,11 @@
+python3 train_independently_model_B_fix_a_W_first.py \
+        --n-sample 10000 \
+        --vocab-size 3 \
+        --seq-length 100 \
+        --window-length 5 \
+        --n-heads 3 \
+        --alpha 0.1 \
+        --n-epochs 2000 \
+        --optim adam \
+        --device cuda:0 \
+        --enable-wandb True
