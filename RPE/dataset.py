@@ -50,7 +50,7 @@ class MarkovDataset(Dataset):
 
 
 class NGramDataset(Dataset):
-    def __init__(self, S, L, n, alpha, n_sample):
+    def __init__(self, S, L, n, alpha, n_sample, output=False):
         self.S = S  # Number of states
         self.L = L  # Length of sequence
         self.n = n  # The n in n-gram
@@ -59,7 +59,8 @@ class NGramDataset(Dataset):
         self.dirichlet_distribution = dist.Dirichlet(torch.full((S,), alpha))
         self.mu_pi = torch.ones(self.S) / self.S # uniformly
         self.samples = [] 
-        print('Generating datasets...')
+        if output:
+            print('Generating datasets...')
         for _ in range(n_sample):
             self.sample()  # regenerate pi
             sequence = torch.empty(self.L, dtype=torch.long)
