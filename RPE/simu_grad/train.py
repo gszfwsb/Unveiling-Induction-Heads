@@ -10,20 +10,16 @@ n = n_language - 1
 bs, n_epochs = 10000, 5000
 power = 2
 
-dataset = NGramDataset(S, L, n_language, alpha, n_sample, output=True)
 model = toyModel(H=2, dim=S)
 
-# pass one batch through the model
-data = next(iter(dataset))
-x = data[0]
-y = data[1]
-# forward pass
-z = model(x)
 
 # training loop
 optimizer = torch.optim.SGD(model.parameters(), lr=10)
 criterion = nn.CrossEntropyLoss(ignore_index=-100)
-train_loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)
+train_loader = torch.utils.data.DataLoader(
+    NGramDataset(S, L, n_language, alpha, n_sample, output=True), 
+    batch_size=bs, 
+    shuffle=True)
 pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = model.to(device)

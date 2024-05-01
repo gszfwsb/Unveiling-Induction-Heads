@@ -58,14 +58,14 @@ class NGramDataset(Dataset):
         self.n_sample = n_sample
         self.dirichlet_distribution = dist.Dirichlet(torch.full((S,), alpha))
         self.mu_pi = torch.ones(self.S) / self.S # uniformly
-        self.samples = [] 
+        self.samples = torch.empty(self.n_sample, self.L + 1, dtype = torch.float)
         if output:
             print('Generating datasets...')
         for _ in range(n_sample):
             self.sample()  # regenerate pi
             sequence = torch.empty(self.L, dtype=torch.long)
             sequence[:self.n-1] = dist.Categorical(probs=self.mu_pi).sample((self.n-1,)) # uniformly sample
-            for i in range(self.n-1, self.L):
+            for i in range(self.n-1, self.L + 1):
                 # Condition on the previous n-1 states
                 context = sequence[i-self.n+1:i]
                 context_idx = self.context_to_index(context)
@@ -104,4 +104,3 @@ class NGramDataset(Dataset):
     def __getitem__(self, idx):
         return self.samples[idx]
 
-    
