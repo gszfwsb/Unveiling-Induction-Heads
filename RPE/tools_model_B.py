@@ -76,6 +76,20 @@ def visualize_W(W, save_file_path, epoch=-1, phase=1,enable_wandb=False):
         image = Image.open(W_path)
         wandb.log({"W": wandb.Image(image)})
 
+def visualize_C_alpha_grad(grad, save_file_path, epoch=-1, phase=1,enable_wandb=False):
+    C_alpha_grad_path = f"{save_file_path}/phase{phase}_C_alpha_grad_{epoch}.png"
+    _, ax = plt.subplots(figsize=(10, 6))
+    # Plot the bar of C_alpha
+    ax.bar(np.arange(len(grad)), grad)
+    ax.set_title('C_alpha Grad Bar')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('Abs C_alpha Grad')
+    plt.savefig(C_alpha_grad_path)
+    plt.close('all')
+
+    if enable_wandb:
+        image = Image.open(C_alpha_grad_path)
+        wandb.log({"C_alpha Grad Bar": wandb.Image(image)})
 
 def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch=-1, phase=1,enable_wandb=False):
     C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
