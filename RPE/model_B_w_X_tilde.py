@@ -35,8 +35,8 @@ class TwoLayerTransformer(nn.Module):
         self.norm = SimplifiedLayerNorm(dim=-1)
         # layer mlp
         self.alpha_list = torch.tensor([
-            [int(i) for i in format(num, f'0{self.H}b')] 
-            for num in range(2**(self.H))
+            [int(i) for i in format(num, f'0{self.H+1}b')] 
+            for num in range(2**(self.H+1))
         ], dtype=int)
         # Extract nonzero indices for each binary vector
         self.S_alpha_list = [
@@ -44,7 +44,7 @@ class TwoLayerTransformer(nn.Module):
             for alpha in self.alpha_list
         ]
 
-        self.C_alpha_list = torch.Tensor(2**(self.H))
+        self.C_alpha_list = torch.Tensor(2**(self.H+1))
         # layer 2: attention
         self.a = torch.Tensor(1)
         self.init(w_plus, w_minus, a_init, c_alpha_init)
@@ -64,8 +64,8 @@ class TwoLayerTransformer(nn.Module):
 
     def polynomial_kernel(self, v_t, v_t_prime):
         '''
-        v_t: [bs, d, H]
-        v_t_prime: [bs, d, H]
+        v_t: [bs, d, (H+1)]
+        v_t_prime: [bs, d, (H+1)]
         '''
         # Initialize the kernel result
         kernel_result = 0.0
@@ -94,10 +94,11 @@ class TwoLayerTransformer(nn.Module):
             v_h_normalized = self.norm(v_h)
             V.append(v_h_normalized)
             # print('v_h_normalized:', v_h_normalized.shape)
-        V = torch.stack(V, -1) # [bs, T+1, d, H]
+        V.append(X_tilde) # [bs, T+1, d, (H+1)]
+        V = torch.stack(V, -1) # [bs, T+1, d, (H+1)]
         kernel_prod = [] # [bs, T]
         for i in range(self.T):
-            prod = self.polynomial_kernel(V[:, -1], V[:, i]) # [bs, d, H], [bs, d, H] -> [bs]
+            prod = self.polynomial_kernel(V[:, -1], V[:, i]) # [bs, d, (H+1)], [bs, d, (H+1)] -> [bs]
             kernel_prod.append(prod) # [bs, T]
         kernel_prod = torch.stack(kernel_prod, -1).to(X.device) # [bs, T]
         kernel_prod = F.softmax(self.a * kernel_prod, dim=-1) # [bs, T]
