@@ -18,7 +18,7 @@ from tools_model_B import *
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=3)
-parser.add_argument('--seq-length',type=int, default=20)
+parser.add_argument('--seq-length',type=int, default=100)
 parser.add_argument('--window-length',type=int, default=5)
 parser.add_argument('--n-heads',type=int, default=3)
 parser.add_argument('--lr1',type=float, default=0.8)
@@ -39,6 +39,7 @@ parser.add_argument('--n-gram',type=int,default=3)
 
 
 args = parser.parse_args()
+
 
 set_seed(args.seed)
 device = args.device
@@ -65,8 +66,10 @@ c_alpha_init = args.c_alpha
 
 
 # Define the file paths
+method_args = f'Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
+train_scheme = 'fix_W_first'
 root_path = './data'
-save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}/fix_W_first'
+save_file_path = f'results/{dataset}/{method_args}/{train_scheme}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
@@ -125,6 +128,13 @@ assert model.a.requires_grad  # Should be True
 assert model.C_alpha_list.requires_grad  # Should be True
 assert model.W.requires_grad  # Should be True
 
+
+# wandb init
+wandb.init(project='ICL', 
+           entity='Transformer-n-grams', 
+           name=f'{method_args}-{train_scheme}',
+           config=vars(args)
+)
 
 
 train_loss_list, val_loss_list, val_acc_list = [], [], []

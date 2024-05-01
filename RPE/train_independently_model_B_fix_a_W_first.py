@@ -66,7 +66,8 @@ c_alpha_init = args.c_alpha
 
 # Define the file paths
 root_path = './data'
-save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}/fix_a_W_first'
+train_scheme = 'fix_a_W_first'
+save_file_path = f'results/{dataset}/Independently_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_M{M}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}/{train_scheme}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer

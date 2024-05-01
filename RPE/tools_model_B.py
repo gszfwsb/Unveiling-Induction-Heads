@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch
+import wandb
+
 
 def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
