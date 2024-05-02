@@ -95,7 +95,6 @@ def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_inde
     C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
     curve_path = f"{save_file_path}/phase{phase}_C_dominance_curve.png"
     C_alpha_sqaure = C_alpha ** 2
-
     _, ax = plt.subplots(figsize=(10, 6))
     # Plot the bar of C_alpha
     ax.bar(np.arange(len(C_alpha_sqaure)), C_alpha_sqaure)

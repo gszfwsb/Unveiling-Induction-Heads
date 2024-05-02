@@ -13,7 +13,7 @@
 
 
 python3 train_independently_model_B_fix_a_W_first.py \
-    --n-sample 10000 \
+    --n-sample 100 \
     --vocab-size 3 \
     --seq-length 100 \
     --window-length 5 \
