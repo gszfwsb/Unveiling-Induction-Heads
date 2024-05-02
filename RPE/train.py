@@ -17,10 +17,10 @@ import wandb
 from model_simplified import ToyModel
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
-parser.add_argument('--vocab-size',type=int,default=3)
+parser.add_argument('--vocab-size',type=int,default=10)
 parser.add_argument('--seq-length',type=int, default=100)
 parser.add_argument('--n-heads',type=int, default=3)
-parser.add_argument('--lr',type=float, default=1e5)
+parser.add_argument('--lr',type=float, default=1)
 parser.add_argument('--batch-size',type=int, default=100000)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--n-sample',type=int,default=10000)
@@ -30,10 +30,10 @@ parser.add_argument('--optim',type=str,default='sgd')
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--c-alpha',type=float,default=1)
 parser.add_argument('--alpha',type=float,default=0.1)
-parser.add_argument('--n-epochs',type=int,default=100)
+parser.add_argument('--n-epochs',type=int,default=10000)
 parser.add_argument('--n-gram',type=int,default=3)
 parser.add_argument('--enable-wandb',type=bool,default=True)
-parser.add_argument('--learn-a',type=bool,default=False)
+parser.add_argument('--learn-a',type=bool,default=True)
 
 
 args = parser.parse_args()
