@@ -75,6 +75,7 @@ class NGramDataset(Dataset):
             y_context = dist.Categorical(probs=self.mu_pi).sample((self.n-1,)) # uniformly sample
             y_context_idx = self.context_to_index(y_context)
             y = dist.Categorical(probs=self.pi[y_context_idx]).sample()
+            x[-(self.n-1):] = F.one_hot(y_context, num_classes=self.S).float() # TODO: revised here
             self.samples.append((x, y))
 
     def context_to_index(self, context):
