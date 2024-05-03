@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch
 import wandb
 from PIL import Image
-
+import torch.nn.functional as F
 
 def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
@@ -66,15 +66,50 @@ def draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=False):
         image = Image.open(curve_path)
         wandb.log({"a": wandb.Image(image)})
 
+def create_matrix_W_h(W, T):
+    """
+    Create and return the softmax-normalized matrix W_h based on the input numpy matrix W_np.
+    
+    Args:
+    W_np (numpy.ndarray): Input numpy array of shape [S, T], where each column represents values for the diagonals of W_h.
+    T (int): The size of the desired output matrix W_h, which will be (T+1) x (T+1).
+    
+    Returns:
+    numpy.ndarray: Output matrix W_h after applying softmax, of shape [T+1, T+1].
+    """
+    # Convert numpy matrix to torch.Tensor
+    W = torch.tensor(W, dtype=torch.float32)
+    
+    # Create an initial matrix of shape [T+1, T+1] filled with negative infinity
+    W_h = torch.full((T+1, T+1), float('-inf'), dtype=torch.float32, device=W.device)
+    
+    # Fill the diagonals
+    for j in range(T):
+        torch.diagonal(W_h, -j).fill_(W[j])
+    
+    # Apply softmax along each row
+    W_h = F.softmax(W_h, dim=1)
+    
+    # Convert the torch.Tensor back to numpy.ndarray before returning
+    W_h_np = W_h.detach().cpu().numpy()
+    return W_h_np
 
 
-def visualize_W(W, save_file_path, epoch=-1, phase=1,enable_wandb=False):
-    W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
-    W_thres = max(W.max(),abs(W.min()))
-    draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
-    if enable_wandb:
-        image = Image.open(W_path)
-        wandb.log({"W": wandb.Image(image)})
+def visualize_W(W, T, save_file_path, epoch=-1, phase=1,enable_wandb=False):
+    # W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
+    # W_thres = max(W.max(),abs(W.min()))
+    # draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
+    # if enable_wandb:
+    #     image = Image.open(W_path)
+    #     wandb.log({"W": wandb.Image(image)})
+    for h in range(W.shape[1]):
+        W_h = create_matrix_W_h(W[:,h], T)
+        W_h_path = f"{save_file_path}/phase{phase}_W_head{h}_{epoch}.png"
+        draw_heatmap(W_h, W_h_path, vmin=0,vmax=W_h.max())
+        if enable_wandb:
+            image = Image.open(W_h_path)
+            wandb.log({f"W_{h}": wandb.Image(image)})
+
 
 def visualize_C_alpha_grad(grad, save_file_path, epoch=-1, phase=1,enable_wandb=False):
     C_alpha_grad_path = f"{save_file_path}/phase{phase}_C_alpha_grad_{epoch}.png"

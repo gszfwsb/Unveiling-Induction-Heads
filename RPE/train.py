@@ -14,26 +14,27 @@ import os
 import numpy as np
 from tools_model_B import *
 import wandb
-from model_simplified import ToyModel
+from model_B import TwoLayerTransformer
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
-parser.add_argument('--vocab-size',type=int,default=10)
+parser.add_argument('--vocab-size',type=int,default=3)
 parser.add_argument('--seq-length',type=int, default=100)
 parser.add_argument('--n-heads',type=int, default=3)
-parser.add_argument('--lr',type=float, default=1)
+parser.add_argument('--lr',type=float, default=1e5)
 parser.add_argument('--batch-size',type=int, default=100000)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--n-sample',type=int,default=10000)
-parser.add_argument('--device',type=str, default='cuda:4')
+parser.add_argument('--device',type=str, default='cuda:3')
 parser.add_argument('--dataset',type=str,default='NGram')
+parser.add_argument('--w-plus',type=float,default=0.1)
+parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--optim',type=str,default='sgd')
 parser.add_argument('--a',type=float,default=0.01)
 parser.add_argument('--c-alpha',type=float,default=1)
 parser.add_argument('--alpha',type=float,default=0.1)
 parser.add_argument('--n-epochs',type=int,default=10000)
 parser.add_argument('--n-gram',type=int,default=3)
-parser.add_argument('--enable-wandb',type=bool,default=True)
-parser.add_argument('--learn-a',type=bool,default=True)
+parser.add_argument('--enable-wandb',type=bool,default=False)
 
 
 args = parser.parse_args()
@@ -61,31 +62,22 @@ alpha = args.alpha
 ignore_idx = -100 
 n = args.n_gram
 c_alpha_init = args.c_alpha
-learn_a = args.learn_a
-
+w_plus = args.w_plus
+w_minus = args.w_minus
 # Define the file paths
-method_args = f'Simplified_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
-method_args += '_learn-a' if learn_a else '_fix-a'
+method_args = f'Formal_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
 root_path = './data'
 save_file_path = f'results/{dataset}/{method_args}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
-if learn_a:
-    model = ToyModel(H, S, a_init, c_alpha_init, a='learnable')
-else:
-    model = ToyModel(H, S, a_init, c_alpha_init, a='fixed')
+model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init)
 model.to(device)
 
+
+
+
 criterion = population_loss(ignore_idx)
- 
-# define optimizers and schedulars
-if optim_method == 'sgd':
-    optimizer = optim.SGD(model.parameters(), lr=lr)
-elif optim_method == 'adam':
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-else:
-    raise NotImplementedError(f'{optim_method} not supported!')
 
 
 # lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=n_epochs//10, gamma=0.5, last_epoch=-1)
@@ -112,9 +104,17 @@ else:
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=False)
 
-eval_freq = min(n_epochs // 10, 100)
+eval_freq = min(n_epochs//10, 500)
 
 
+ 
+# define optimizers and schedulars
+if optim_method == 'sgd':
+    optimizer = optim.SGD(model.parameters(), lr=lr)
+elif optim_method == 'adam':
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+else:
+    raise NotImplementedError(f'{optim_method} not supported!')
 
 # wandb init
 wandb.init(project='ICL', 
@@ -124,14 +124,14 @@ wandb.init(project='ICL',
 )
 
 # test before
-C_alpha_list = model.Encoder.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
 visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
-
+W = model.layer1.W.clone().cpu().detach().numpy()
+visualize_W(W, L, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
 
 train_loss_list, val_loss_list, val_acc_list = [], [], []
-if learn_a:
-    a_list = []
-    a_list.append(model.Encoder.a.item())
+a_list = []
+a_list.append(model.layer2.a.item())
 dominating_C_alpha_index, dominating_C_alpha_value = [], []
 pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
@@ -153,10 +153,10 @@ for epoch in pbar:
         
         train_loss += loss.item()
         if epoch % eval_freq == 0:
-            C_alpha_grad = model.Encoder.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
+            C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
             C_alpha_grad = np.abs(C_alpha_grad)
             visualize_C_alpha_grad(C_alpha_grad,  save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
-
+            # print(model.layer1.W.grad.data.clone().detach().cpu().numpy())
     train_loss_list.append(train_loss / n_train)
 
     model.eval()
@@ -175,15 +175,22 @@ for epoch in pbar:
             pbar.set_description(f'Val loss:{loss.item():.10f}')
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
-        if learn_a:
-            a_list.append(model.Encoder.a.item())
-        C_alpha_list = model.Encoder.C_alpha_list.data.cpu().detach().numpy()[0]
+        a_list.append(model.layer2.a.item())
+        C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
         _, max_index, dominance_value = check_dominate_C(C_alpha_list)
         dominating_C_alpha_index.append(max_index)
         dominating_C_alpha_value.append(dominance_value)
     if epoch % eval_freq == 0:
-        C_alpha_list = model.Encoder.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+        C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
         visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
-        if learn_a:
-            draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=enable_wandb)
+        draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=enable_wandb)
+        W = model.layer1.W.clone().cpu().detach().numpy()
+        visualize_W(W, L, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
+
+W = model.layer1.W.clone().cpu().detach().numpy()
+C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
+visualize_W(W, L, save_file_path, 'end', phase=1,enable_wandb=enable_wandb)
+visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=1,enable_wandb=enable_wandb)
+draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
+draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=enable_wandb)
