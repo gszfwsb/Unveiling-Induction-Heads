@@ -112,7 +112,7 @@ eval_freq = min(n_epochs//10, 500)
  
 # define optimizers and schedulars
 if optim_method == 'sgd':
-    optimizer1 = optim.SGD([model.layer1.W], lr=lr1)
+    optimizer1 = optim.SGD([model.layer1.W], lr=lr1, weight_decay=0, momentum=0)
     optimizer2 = optim.SGD([model.layer2.a, model.layer2.C_alpha_list], lr=lr2)
 elif optim_method == 'adam':
     optimizer1 = optim.Adam([model.layer1.W], lr=lr1)

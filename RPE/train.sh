@@ -37,7 +37,9 @@ python3 train.py --w-plus 50 --device cuda:4 --n-epochs 10000 --enable-wandb Tru
 python3 train.py --w-plus 40 --device cuda:3 --n-epochs 10000 --enable-wandb True
 python3 train.py --w-plus 30 --device cuda:2 --n-epochs 10000 --enable-wandb True
 python3 train.py --w-plus 20 --device cuda:1 --n-epochs 10000 --enable-wandb True
-python3 train_independently_model_B_fix_W_first.py --w-plus 1 --device cuda:2 --n-epochs 2000 --lr1 1e6 --lr2 1e6
-python3 train_independently_model_B_train_W_first.py --w-plus 1 --device cuda:2 --n-epochs 2000 --lr1 1e6 --lr2 1e3
+python3 train.py --w-plus 1 --device cuda:1 --n-epochs 10000 --lr 1e1
+python3 train.py --w-plus 1 --device cuda:2 --n-epochs 10000 --lr 1e2
+python3 train_independently_model_B_fix_W_first.py --w-plus 1 --device cuda:4 --n-epochs 10000 --lr1 1e5 --lr2 1e6 # works!!!
+# python3 train_independently_model_B_train_W_first.py --w-plus 1 --device cuda:3 --n-epochs 2000 --lr1 1e6 --lr2 1e1
 
 
