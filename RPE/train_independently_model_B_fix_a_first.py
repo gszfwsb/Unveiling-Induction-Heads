@@ -67,7 +67,7 @@ c_alpha_init = args.c_alpha
 w_plus = args.w_plus
 w_minus = args.w_minus
 # Define the file paths
-method_args = f'Formal_train_W_second_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
+method_args = f'Formal_fix_a_first_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
 root_path = './data'
 save_file_path = f'results/{dataset}/{method_args}'
 makedirs(save_file_path)
@@ -112,11 +112,11 @@ eval_freq = min(n_epochs//10, 500)
  
 # define optimizers and schedulars
 if optim_method == 'sgd':
-    optimizer1 = optim.SGD([model.layer2.a, model.layer2.C_alpha_list], lr=lr1)
-    optimizer2 = optim.SGD([model.layer1.W], lr=lr2)
+    optimizer1 = optim.SGD([model.layer1.W,model.layer2.C_alpha_list], lr=lr1)
+    optimizer2 = optim.SGD([model.layer2.a], lr=lr2)
 elif optim_method == 'adam':
-    optimizer1 = optim.Adam([model.layer2.a, model.layer2.C_alpha_list], lr=lr1)
-    optimizer2 = optim.Adam([model.layer1.W], lr=lr2)
+    optimizer1 = optim.Adam([model.layer1.W,model.layer2.C_alpha_list], lr=lr1)
+    optimizer2 = optim.Adam([model.layer2.a], lr=lr2)
 else:
     raise NotImplementedError(f'{optim_method} not supported!')
 
@@ -133,11 +133,11 @@ visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1, enable_
 W = model.layer1.W.clone().cpu().detach().numpy()
 visualize_W(W, L, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
 
+
+# train W and C_alpha first
 train_loss_list, val_loss_list, val_acc_list = [], [], []
-a_list = []
-a_list.append(model.layer2.a.item())
 dominating_C_alpha_index, dominating_C_alpha_value = [], []
-pbar = tqdm(range(n_epochs),ncols=n_epochs,mininterval=1)
+pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
 for epoch in pbar:
     model.train()
@@ -177,19 +177,22 @@ for epoch in pbar:
             pbar.set_description(f'Val loss:{loss.item():.10f}')
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
-        a_list.append(model.layer2.a.item())
         C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
         _, max_index, dominance_value = check_dominate_C(C_alpha_list)
         dominating_C_alpha_index.append(max_index)
         dominating_C_alpha_value.append(dominance_value)
     if epoch % eval_freq == 0:
+        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
+        W = model.layer1.W.clone().cpu().detach().numpy()
+        visualize_W(W, L, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
         C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
         visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
-        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
-        draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=enable_wandb)
-
+# train a second
 train_loss_list, val_loss_list, val_acc_list = [], [], []
-pbar = tqdm(range(100),ncols=100,mininterval=1)
+a_list = []
+a_list.append(model.layer2.a.item())
+pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
+
 
 for epoch in pbar:
     model.train()
@@ -202,9 +205,7 @@ for epoch in pbar:
         loss = criterion(logits, y)
         loss.backward()
         optimizer2.step()
-
         pbar.set_description(f'Train loss:{loss.item():.10f}')
-        
         train_loss += loss.item()
     train_loss_list.append(train_loss / n_train)
 
@@ -224,10 +225,12 @@ for epoch in pbar:
             pbar.set_description(f'Val loss:{loss.item():.10f}')
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
+        a_list.append(model.layer2.a.item())
     if epoch % eval_freq == 0:
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2,enable_wandb=enable_wandb)
-        W = model.layer1.W.clone().cpu().detach().numpy()
-        visualize_W(W, L, save_file_path, epoch, phase=2,enable_wandb=enable_wandb)
+        draw_a_curve(a_list, save_file_path, phase=2,enable_wandb=enable_wandb)
+
+
 
 W = model.layer1.W.clone().cpu().detach().numpy()
 C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
