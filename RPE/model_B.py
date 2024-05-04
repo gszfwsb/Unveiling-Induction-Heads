@@ -17,13 +17,12 @@ class SimplifiedLayerNorm(nn.Module):
         return out
 
 class Simplified_MultiHeadAttention(nn.Module):
-    def __init__(self, T, H, w_plus, w_minus):
+    def __init__(self, T, n_parent, H, w_plus, w_minus):
         super(Simplified_MultiHeadAttention, self).__init__()
         self.T = T
         self.H = H
         self.W = torch.ones((self.T,self.H)) * w_minus
         torch.diagonal(self.W, 0).fill_(w_plus)
-        # print(self.W)
         self.W = nn.Parameter(self.W)
         self.norm = SimplifiedLayerNorm(dim=-1)
     def forward(self, X):
@@ -33,9 +32,9 @@ class Simplified_MultiHeadAttention(nn.Module):
             # W_h = torch.zeros((self.T+1, self.T+1)).to(X_tilde.device) # [T+1, T+1]
             # print(f'head {h}')
             W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
-            torch.diagonal(W_h, 0).fill_(self.W[:, h][-1])  # Set the main diagonal
+            torch.diagonal(W_h, 0).fill_(self.W[:, h][-1])  # TODO: Set the main diagonal!
             for j in range(self.H):
-                torch.diagonal(W_h, -(j+1)).fill_(self.W[:, h][j])  # Set the (j+1)-th negative diagonal
+                torch.diagonal(W_h, -(j+1+h)).fill_(self.W[:, h][j])  # Set the (j)-th negative diagonal
             # print(W_h)
             W_h = F.softmax(W_h, dim=-1)
             v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
@@ -44,7 +43,6 @@ class Simplified_MultiHeadAttention(nn.Module):
         V.append(X_tilde) # [bs, T+1, d, (H+1)]
         V = torch.stack(V, -1) # [bs, T+1, d, (H+1)]
         return V
-
 
 
 
@@ -145,17 +143,20 @@ class TwoLayerTransformer(nn.Module):
                 w_plus,
                 w_minus,
                 a_init,
-                c_alpha_init):
+                c_alpha_init,
+                n_parent):
         super(TwoLayerTransformer, self).__init__()
         self.T = seq_length
         self.H = num_heads
         self.d = vocab_size
+        self.n_parent = n_parent
         # layer 1: attention
         self.layer1 = Simplified_MultiHeadAttention(
-            self.T, 
-            self.H, 
-            w_plus, 
-            w_minus
+            T=self.T, 
+            n_parent=self.n_parent,
+            H=self.H, 
+            w_plus=w_plus, 
+            w_minus=w_minus
         )
         # layer 2: attention
         self.layer2 = PolyKernel_MultiHeadAttention(

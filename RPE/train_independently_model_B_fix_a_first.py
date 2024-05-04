@@ -73,7 +73,7 @@ save_file_path = f'results/{dataset}/{method_args}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
-model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init)
+model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1)
 model.to(device)
 
 
@@ -131,8 +131,7 @@ wandb.init(project='ICL',
 C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
 visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
 W = model.layer1.W.clone().cpu().detach().numpy()
-visualize_W(W, H, L, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
-
+visualize_W(W, H, L, n-1, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
 
 # train W and C_alpha first
 train_loss_list, val_loss_list, val_acc_list = [], [], []
@@ -184,7 +183,7 @@ for epoch in pbar:
     if epoch % eval_freq == 0:
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
         W = model.layer1.W.clone().cpu().detach().numpy()
-        visualize_W(W, H, L, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
+        visualize_W(W, H, L, n-1, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
         C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
         visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
 # train a second
@@ -234,7 +233,7 @@ for epoch in pbar:
 
 W = model.layer1.W.clone().cpu().detach().numpy()
 C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
-visualize_W(W, H, L, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
+visualize_W(W, H, L, n-1, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
 visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
 draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2,enable_wandb=enable_wandb)
 draw_a_curve(a_list, save_file_path, phase=2,enable_wandb=enable_wandb)

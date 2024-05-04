@@ -66,7 +66,7 @@ def draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=False):
         image = Image.open(curve_path)
         wandb.log({"a": wandb.Image(image)})
 
-def create_matrix_W_h(W, H, h, T):
+def create_matrix_W_h(W, H, n, T, h):
     """
     Create and return the softmax-normalized matrix W_h based on the input numpy matrix W_np.
     
@@ -85,7 +85,7 @@ def create_matrix_W_h(W, H, h, T):
     torch.diagonal(W_h, 0).fill_(W[-1])  # Set the main diagonal
     # Fill the diagonals
     for j in range(H):
-        torch.diagonal(W_h, -j-1).fill_(W[j])
+        torch.diagonal(W_h, -j-1-h).fill_(W[j])
     
     # Apply softmax along each row
     W_h = F.softmax(W_h, dim=1)
@@ -95,15 +95,15 @@ def create_matrix_W_h(W, H, h, T):
     return W_h_np
 
 
-def visualize_W(W, H, T, save_file_path, epoch=-1, phase=1,enable_wandb=False):
-    # W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
-    # W_thres = max(W.max(),abs(W.min()))
-    # draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
-    # if enable_wandb:
-    #     image = Image.open(W_path)
-    #     wandb.log({"W": wandb.Image(image)})
+def visualize_W(W, H, T, n, save_file_path, epoch=-1, phase=1,enable_wandb=False):
+    W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
+    W_thres = max(W.max(),abs(W.min()))
+    draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
+    if enable_wandb:
+        image = Image.open(W_path)
+        wandb.log({"W": wandb.Image(image)})
     for h in range(W.shape[1]):
-        W_h = create_matrix_W_h(W[:,h], H, h, T)
+        W_h = create_matrix_W_h(W[:,h], H, n, T, h)
         W_h_path = f"{save_file_path}/phase{phase}_W_head{h}_{epoch}.png"
         draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
         if enable_wandb:

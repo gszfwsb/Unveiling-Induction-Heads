@@ -132,7 +132,6 @@ C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
 visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
 W = model.layer1.W.clone().cpu().detach().numpy()
 visualize_W(W, H, L, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
-exit()
 train_loss_list, val_loss_list, val_acc_list = [], [], []
 a_list = []
 a_list.append(model.layer2.a.item())
