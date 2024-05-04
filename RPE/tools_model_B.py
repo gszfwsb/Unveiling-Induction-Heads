@@ -82,14 +82,12 @@ def create_matrix_W_h(W, H, n, T, h):
     
     # Create an initial matrix of shape [T+1, T+1] filled with negative infinity
     W_h = torch.full((T+1, T+1), float('-inf'), dtype=torch.float32, device=W.device)
-    torch.diagonal(W_h, 0).fill_(W[-1])  # Set the main diagonal
     # Fill the diagonals
     for j in range(H):
-        torch.diagonal(W_h, -j-1-h).fill_(W[j])
-    
+        torch.diagonal(W_h, -j-1-h).fill_(W[j+h])
     # Apply softmax along each row
     W_h = F.softmax(W_h, dim=1)
-    
+    W_h[torch.isnan(W_h)] = 0
     # Convert the torch.Tensor back to numpy.ndarray before returning
     W_h_np = W_h.detach().cpu().numpy()
     return W_h_np

@@ -190,7 +190,7 @@ for epoch in pbar:
 train_loss_list, val_loss_list, val_acc_list = [], [], []
 a_list = []
 a_list.append(model.layer2.a.item())
-pbar = tqdm(range(500),ncols=100,mininterval=1)
+pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
 
 for epoch in pbar:

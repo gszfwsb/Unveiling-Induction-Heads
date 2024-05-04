@@ -5,7 +5,6 @@ import random
 import torch.nn as nn
 import torch.nn.functional as F
 import sys
-sys.stdout = open('log.txt', 'w')
 
 def set_seed(seed=3407):
     random.seed(seed)
@@ -30,20 +29,16 @@ class Simplified_MultiHeadAttention(nn.Module):
         self.W = nn.Parameter(self.W)
     def forward(self, X):
         X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2)
-        # V.append(X_tilde)
+        V = X_tilde.clone()
         for h in range(self.H):
             W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
-            # torch.diagonal(W_h, 0).fill_(self.W[:, h][-1])  # TODO: Set the main diagonal!
             for j in range(self.H):
                 torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
-            # print(W_h)
             W_h = F.softmax(W_h, dim=-1)
-            W_h[torch.isnan(W_h)] = 0
-            v_h = torch.einsum("mn,bnd->bmd",W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
-            X_tilde = torch.cat([X_tilde, v_h.clone()], dim=-1)
-        V = X_tilde.clone()
+            W_h = torch.nan_to_num(W_h, nan=0.0)  # Safely convert NaNs to zero after softmax
+            v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
+            V = torch.cat([V, v_h.clone()], dim=-1)
         return V
-
 
 class Copier:
     def __init__(self, H: int):
@@ -54,7 +49,6 @@ class Copier:
         x: [bs, seq_len, S]
         """
         assert x.shape[-2] >= self.H, "Sequence length must be at least H"
-
         # Add a zero column to the end of x
         x = torch.cat([x, torch.zeros_like(x[..., :1, :], device=x.device)], dim=-2)
         y = x.clone()
@@ -71,34 +65,33 @@ class Copier:
         return x.reshape(x.shape[0], x.shape[1], -1)
 
 # 初始输入张量 x
-H = 2
-x = torch.randn(1, 10, 3)
-print(x)
-
-print(x.shape)
+H = 8
+bs = 100
+seq_length = 100
+vocab_size = 10
+x = torch.randn(bs, seq_length, vocab_size)
 
 
 # 创建 Copier 实例
 copier = Copier(H)
 
 # 应用 forward 方法
-output = copier.forward(x)
+output1 = copier.forward(x)
 
 # 输出结果
-print(output)
-
-print("###############################################")
 
 
-model = Simplified_MultiHeadAttention(10, 3, H=H, w_plus=1e5, w_minus=0.5)
+
+model = Simplified_MultiHeadAttention(seq_length, vocab_size, H=H, w_plus=1e5, w_minus=0.5)
 
 # 应用 forward 方法
 output = model(x)
-output = output.reshape(x.shape[0], x.shape[1]+1, -1)
+output = output.reshape(x.shape[0], x.shape[1]+1, -1).detach()
+
+
 
 # 输出结果
-print(output)
-
-# print(output.shape)
+yeah = (output==output1).all()
+print(yeah) 
 
 

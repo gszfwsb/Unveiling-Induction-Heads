@@ -24,24 +24,19 @@ class Simplified_MultiHeadAttention(nn.Module):
         self.W = torch.ones((self.T,self.H)) * w_minus
         torch.diagonal(self.W, 0).fill_(w_plus)
         self.W = nn.Parameter(self.W)
-        self.norm = SimplifiedLayerNorm(dim=-1)
     def forward(self, X):
-        X_tilde = torch.cat([X, torch.zeros((X.size(0), 1, X.size(2))).to(X.device)], dim=1) # (bs, T+1, d)
-        V = []
+        X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2)
+        V = X_tilde.clone()
         for h in range(self.H):
-            # W_h = torch.zeros((self.T+1, self.T+1)).to(X_tilde.device) # [T+1, T+1]
-            # print(f'head {h}')
             W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
-            torch.diagonal(W_h, 0).fill_(self.W[:, h][-1])  # TODO: Set the main diagonal!
             for j in range(self.H):
-                torch.diagonal(W_h, -(j+1+h)).fill_(self.W[:, h][j])  # Set the (j)-th negative diagonal
-            # print(W_h)
+                torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
             W_h = F.softmax(W_h, dim=-1)
+            # W_h[torch.isnan(W_h)] = 0
+            W_h = torch.nan_to_num(W_h, nan=0.0)  # Safely convert NaNs to zero after softmax
             v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
-            v_h_normalized = self.norm(v_h)
-            V.append(v_h_normalized)
-        V.append(X_tilde) # [bs, T+1, d, (H+1)]
-        V = torch.stack(V, -1) # [bs, T+1, d, (H+1)]
+            V = torch.cat([V, v_h.clone()], dim=-1)
+        V = V.to(X.device)
         return V
 
 
