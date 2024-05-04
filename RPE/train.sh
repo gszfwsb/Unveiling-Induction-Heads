@@ -40,6 +40,6 @@ python3 train.py --w-plus 20 --device cuda:1 --n-epochs 10000 --enable-wandb Tru
 python3 train.py --w-plus 1 --device cuda:1 --n-epochs 10000 --lr 1e1
 python3 train.py --w-plus 1 --device cuda:2 --n-epochs 10000 --lr 1e2
 python3 train_independently_model_B_fix_W_first.py --w-plus 1 --device cuda:4 --n-epochs 10000 --lr1 1e5 --lr2 1e6 # works!!!
-python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:5 --n-epochs 5000 --lr1 1e1 --lr2 1e2
+python3 train_independently_model_B_fix_a_first.py --w-plus 100 --device cuda:5 --n-epochs 5000 --lr1 1e1 --lr2 1e2
 
 
