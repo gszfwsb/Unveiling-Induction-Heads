@@ -112,8 +112,8 @@ eval_freq = min(n_epochs//10, 500)
  
 # define optimizers and schedulars
 if optim_method == 'sgd':
-    optimizer1 = optim.SGD([model.layer1.W,model.layer2.C_alpha_list], lr=lr1)
-    optimizer2 = optim.SGD([model.layer2.a], lr=lr2)
+    optimizer1 = optim.SGD([model.layer1.W,model.layer2.C_alpha_list], lr=lr1, momentum=0, weight_decay=0)
+    optimizer2 = optim.SGD([model.layer2.a], lr=lr2,  momentum=0, weight_decay=0)
 elif optim_method == 'adam':
     optimizer1 = optim.Adam([model.layer1.W,model.layer2.C_alpha_list], lr=lr1)
     optimizer2 = optim.Adam([model.layer2.a], lr=lr2)
@@ -131,7 +131,7 @@ wandb.init(project='ICL',
 C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
 visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
 W = model.layer1.W.clone().cpu().detach().numpy()
-visualize_W(W, L, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
+visualize_W(W, H, L, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
 
 
 # train W and C_alpha first
@@ -184,7 +184,7 @@ for epoch in pbar:
     if epoch % eval_freq == 0:
         draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
         W = model.layer1.W.clone().cpu().detach().numpy()
-        visualize_W(W, L, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
+        visualize_W(W, H, L, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
         C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
         visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
 # train a second
@@ -234,7 +234,7 @@ for epoch in pbar:
 
 W = model.layer1.W.clone().cpu().detach().numpy()
 C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
-visualize_W(W, L, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
+visualize_W(W, H, L, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
 visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
 draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2,enable_wandb=enable_wandb)
 draw_a_curve(a_list, save_file_path, phase=2,enable_wandb=enable_wandb)
