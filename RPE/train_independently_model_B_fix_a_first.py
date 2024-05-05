@@ -4,19 +4,21 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader, TensorDataset
-
+import os
+import sys
+sys.path.append(os.path.abspath('../'))
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import MarkovDataset, NGramDataset
 from tools import makedirs, set_seed
 import argparse
-import os
 import numpy as np
-from tools_model_B import *
+from RPE.utils import *
 import wandb
-from model_B import TwoLayerTransformer
+from RPE.model import TwoLayerTransformer
 
-parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
+
+parser = argparse.ArgumentParser('train 2-layer disentangled Transformer with a fixed a first')
 parser.add_argument('--vocab-size',type=int,default=3)
 parser.add_argument('--seq-length',type=int, default=100)
 parser.add_argument('--n-heads',type=int, default=3)
@@ -136,6 +138,8 @@ visualize_W(W, H, L, n-1, save_file_path, 'init', phase=1, enable_wandb=enable_w
 # train W and C_alpha first
 train_loss_list, val_loss_list, val_acc_list = [], [], []
 dominating_C_alpha_index, dominating_C_alpha_value = [], []
+C_list = []
+C_list.append(C_alpha_list)
 pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
 for epoch in pbar:
@@ -177,6 +181,7 @@ for epoch in pbar:
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
         C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
+        C_list.append(C_alpha_list)
         _, max_index, dominance_value = check_dominate_C(C_alpha_list)
         dominating_C_alpha_index.append(max_index)
         dominating_C_alpha_value.append(dominance_value)
@@ -185,6 +190,7 @@ for epoch in pbar:
         W = model.layer1.W.clone().cpu().detach().numpy()
         visualize_W(W, H, L, n-1, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
         C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+        draw_C_alpha_curve(C_list, save_file_path, phase=1, enable_wandb=enable_wandb)
         visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
 # train a second
 train_loss_list, val_loss_list, val_acc_list = [], [], []
@@ -237,3 +243,4 @@ visualize_W(W, H, L, n-1, save_file_path, 'end', phase=2,enable_wandb=enable_wan
 visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
 draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2,enable_wandb=enable_wandb)
 draw_a_curve(a_list, save_file_path, phase=2,enable_wandb=enable_wandb)
+draw_C_alpha_curve(C_list, save_file_path, phase=2, enable_wandb=enable_wandb)

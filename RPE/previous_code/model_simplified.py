@@ -1,47 +1,65 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from transformer_base import MultiHeadAttention
-import itertools
+from RPE.previous_code.transformer_base import MultiHeadAttention
 from typing import Literal
+import itertools
 
-
-class SimplifiedLayerNorm(nn.Module):
-    def __init__(self, dim=-1, eps=1e-7):
-        super(SimplifiedLayerNorm, self).__init__()
-        self.dim = dim
-        self.eps = eps
+class ToyModel(nn.Module):
+    def __init__(self, H: int, dim: int, a_init: float, c_alpha_init: float, a: str = None):
+        super().__init__()
+        self.Copier = Copier(H=H)
+        if a == "learnable":
+            self.Encoder = PolyKernel_MultiHeadAttention(
+                num_heads=1,
+                num_components=H,
+                dimension=dim,
+                max_individual_degree=1,
+                init_method="ones",
+                a = "learnable",
+                a_init = a_init
+            )
+        else:
+            self.Encoder = PolyKernel_MultiHeadAttention(
+                num_heads=1,
+                num_components=H,
+                dimension=dim,
+                max_individual_degree=1,
+                init_method="ones",
+                a = a_init
+            )
+        self.Encoder.C_alpha_list.data = torch.ones_like(self.Encoder.C_alpha_list.data) * c_alpha_init
+    
     def forward(self, x):
-        norm = torch.norm(x, dim=self.dim, keepdim=True)
-        out = x / (norm + self.eps)
-        return out
+        d = x.shape[-1]
+        x = self.Copier.forward(x)
+        x = self.Encoder(x[..., -1:, d:], x[..., :-1, d:], x[..., :-1, 0:d])
+        return x
+    
 
-class Simplified_MultiHeadAttention(nn.Module):
-    def __init__(self, T, n_parent, H, w_plus, w_minus):
-        super(Simplified_MultiHeadAttention, self).__init__()
-        self.T = T
-        self.H = H
-        self.W = torch.ones((self.T,self.H)) * w_minus
-        torch.diagonal(self.W, 0).fill_(w_plus)
-        self.W = nn.Parameter(self.W)
-        self.norm = SimplifiedLayerNorm(dim=-1)
-    def forward(self, X):
-        X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2)
-        V = X_tilde.clone()
+class Copier:
+    def __init__(self, H: int):
+        self.H = H # Window length for copying
+    
+    def forward(self, x):
+        """
+        x: [bs, seq_len, S]
+        """
+        assert x.shape[-2] >= self.H, "Sequence length must be at least H"
+
+        # Add a zero column to the end of x
+        x = torch.cat([x, torch.zeros_like(x[..., :1, :], device=x.device)], dim=-2)
+        y = x.clone()
         for h in range(self.H):
-            W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
-            for j in range(self.H):
-                torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
-            W_h = F.softmax(W_h, dim=-1)
-            W_h = torch.nan_to_num(W_h, nan=0.0)  # Safely convert NaNs to zero after softmax
-            v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
-            v_h = self.norm(v_h)
-            V = torch.cat([V, v_h.clone()], dim=-1)
-        V = V.to(X.device)
-        return V
+            # delete the last (h+1) tokens
+            y = y[..., :-1, :]
+            # add (h+1) zeros to the beginning
+            y = torch.cat([torch.zeros_like(y[..., :1, :], device=y.device), y], dim=-2)
+            x = torch.cat([x, y.clone()], dim=-1)
 
-
-
+        if x.dim() == 2:
+            x = x.unsqueeze(0)
+        return x.reshape(x.shape[0], x.shape[1], -1)
+    
 
 class PolyKernel_MultiHeadAttention(MultiHeadAttention):
     def __init__(self, 
@@ -129,50 +147,7 @@ class PolyKernel_MultiHeadAttention(MultiHeadAttention):
         
         o, _ = super().forward(query, torch.zeros_like(key, device=key.device), value, logits_shift=logits_shift * self.a)
         return o.squeeze(1)
-  
-
-class TwoLayerTransformer(nn.Module):
-    def __init__(self, 
-                vocab_size,
-                seq_length,
-                num_heads,
-                w_plus,
-                w_minus,
-                a_init,
-                c_alpha_init,
-                n_parent):
-        super(TwoLayerTransformer, self).__init__()
-        self.T = seq_length
-        self.H = num_heads
-        self.d = vocab_size
-        self.n_parent = n_parent
-        # layer 1: attention
-        self.layer1 = Simplified_MultiHeadAttention(
-            T=self.T, 
-            n_parent=self.n_parent,
-            H=self.H, 
-            w_plus=w_plus, 
-            w_minus=w_minus
-        )
-        # layer 2: attention
-        self.layer2 = PolyKernel_MultiHeadAttention(
-            num_heads=1,
-            num_components=self.H,
-            dimension=self.d,
-            max_individual_degree=1,
-            init_method="ones",
-            a = "learnable",
-            a_init = a_init
-        )
-        # init params
-        self.layer2.C_alpha_list.data = torch.ones_like(self.layer2.C_alpha_list.data) * c_alpha_init
-
-    def forward(self, X):
-        X = self.layer1(X) # [bs, T+1, d, H]
-        X = X.view(X.shape[0], X.shape[1], -1)
-        X = self.layer2(X[..., -1:, self.d:], X[..., :-1, self.d:], X[..., :-1, 0:self.d])
-        return X
-  
+    
 
 def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)

@@ -7,13 +7,13 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
-from model_B import TwoLayerTransformer
+from RPE.model import TwoLayerTransformer
 from dataset import MarkovDataset, NGramDataset
 from tools import makedirs, set_seed
 import argparse
 import os
 import numpy as np
-from tools_model_B import *
+from RPE.utils import *
 import wandb
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')

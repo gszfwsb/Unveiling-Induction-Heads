@@ -109,6 +109,21 @@ def visualize_W(W, H, T, n, save_file_path, epoch=-1, phase=1,enable_wandb=False
             wandb.log({f"W_{h}": wandb.Image(image)})
 
 
+def draw_C_alpha_curve(C_alpha_list, save_file_path, phase=1,enable_wandb=False):
+    curve_path = f"{save_file_path}/phase{phase}_C_alpha_curve.png"
+    plt.figure(figsize=(6, 6))
+    C_alpha_list = np.array(C_alpha_list)
+    x = list(range(len(C_alpha_list)))
+    for h in range(len(C_alpha_list[0])):
+        plt.plot(x, C_alpha_list[:, h], label=f'C_{h}')
+        plt.legend()
+    plt.title('C_alpha_curve')
+    plt.savefig(curve_path)
+    plt.close('all')
+    if enable_wandb:
+        image = Image.open(curve_path)
+        wandb.log({"C_alpha_curve": wandb.Image(image)})
+
 def visualize_C_alpha_grad(grad, save_file_path, epoch=-1, phase=1,enable_wandb=False):
     C_alpha_grad_path = f"{save_file_path}/phase{phase}_C_alpha_grad_{epoch}.png"
     _, ax = plt.subplots(figsize=(10, 6))
@@ -146,10 +161,10 @@ def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_inde
         plt.subplot(121)
         x = list(range(len(dominating_C_alpha_value)))
         plt.plot(x,dominating_C_alpha_value)
-        plt.title('Dominating C_alpha Value')
+        plt.title('Dominating C_alpha Square Ratio')
         plt.subplot(122)
         plt.plot(x,dominating_C_alpha_index)
-        plt.title('Dominating C_alpha Index')
+        plt.title('Dominating C_alpha Square Index')
         plt.tight_layout()
         plt.savefig(curve_path)
         plt.close('all')

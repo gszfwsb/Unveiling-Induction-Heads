@@ -12,9 +12,9 @@ from tools import makedirs, set_seed
 import argparse
 import os
 import numpy as np
-from tools_model_B import *
+from RPE.utils import *
 import wandb
-from model_B import TwoLayerTransformer
+from RPE.model import TwoLayerTransformer
 
 parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=3)

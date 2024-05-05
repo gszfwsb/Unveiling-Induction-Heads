@@ -12,7 +12,7 @@ from tools import makedirs, set_seed
 import argparse
 import os
 import numpy as np
-from tools_model_B import *
+from RPE.utils import *
 import wandb
 from model_simplified import ToyModel
 
