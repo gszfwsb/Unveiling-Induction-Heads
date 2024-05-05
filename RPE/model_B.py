@@ -24,6 +24,7 @@ class Simplified_MultiHeadAttention(nn.Module):
         self.W = torch.ones((self.T,self.H)) * w_minus
         torch.diagonal(self.W, 0).fill_(w_plus)
         self.W = nn.Parameter(self.W)
+        self.norm = SimplifiedLayerNorm(dim=-1)
     def forward(self, X):
         X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2)
         V = X_tilde.clone()
@@ -32,9 +33,9 @@ class Simplified_MultiHeadAttention(nn.Module):
             for j in range(self.H):
                 torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
             W_h = F.softmax(W_h, dim=-1)
-            # W_h[torch.isnan(W_h)] = 0
             W_h = torch.nan_to_num(W_h, nan=0.0)  # Safely convert NaNs to zero after softmax
             v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
+            v_h = self.norm(v_h)
             V = torch.cat([V, v_h.clone()], dim=-1)
         V = V.to(X.device)
         return V
