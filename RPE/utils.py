@@ -5,6 +5,12 @@ import torch
 import wandb
 from PIL import Image
 import torch.nn.functional as F
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib import gridspec
+
+
+colors = ["green", "lime", "white", "pink", "deeppink"]  # Corrected color name
+CMAP = LinearSegmentedColormap.from_list("custom_cmap", colors, N=256)
 
 def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
@@ -23,10 +29,18 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5, normalize=False):
     if normalize:
         data = normalize_data(data)
     # print(data.shape)
-    plt.figure(figsize=(10, 10))
-    plt.imshow(data, cmap='inferno', vmin=vmin, vmax=vmax)
+    # Create a figure with a gridspec that defines a 1x2 grid
+    fig = plt.figure(figsize=(5.2, 5))  # Adjusted figure size for better control
+    gs = gridspec.GridSpec(1, 2, width_ratios=[5, 0.2], wspace=0.05)  # wspace controls the space between the image and colorbar
+
+    # Add an image plot to the first cell of the gridspec
+    ax1 = fig.add_subplot(gs[0])
+    img = ax1.imshow(data, cmap=CMAP, vmin=vmin, vmax=vmax)  # Use a default colormap here
+
+    # Add a colorbar to the second cell of the gridspec
+    ax2 = fig.add_subplot(gs[1])
+    plt.colorbar(img, cax=ax2)
     plt.tight_layout()
-    plt.colorbar()
     # Save the heatmap to a file
     plt.savefig(heatmap_path)
     # Close plt figure to free memory
@@ -86,11 +100,13 @@ def create_matrix_W_h(W, H, n, T, h):
     for j in range(H):
         torch.diagonal(W_h, -j-1-h).fill_(W[j+h])
     # Apply softmax along each row
+    W_h_raw = W_h.clone()
     W_h = F.softmax(W_h, dim=1)
     W_h[torch.isnan(W_h)] = 0
     # Convert the torch.Tensor back to numpy.ndarray before returning
     W_h_np = W_h.detach().cpu().numpy()
-    return W_h_np
+    W_h_raw = W_h_raw.detach().cpu().numpy()
+    return W_h_raw, W_h_np
 
 
 def visualize_W(W, H, T, n, save_file_path, epoch=-1, phase=1,enable_wandb=False):
@@ -101,21 +117,27 @@ def visualize_W(W, H, T, n, save_file_path, epoch=-1, phase=1,enable_wandb=False
         image = Image.open(W_path)
         wandb.log({"W": wandb.Image(image)})
     for h in range(W.shape[1]):
-        W_h = create_matrix_W_h(W[:,h], H, n, T, h)
+        W_h_raw, W_h = create_matrix_W_h(W[:,h], H, n, T, h)
         W_h_path = f"{save_file_path}/phase{phase}_W_head{h}_{epoch}.png"
+        W_h_raw_path = f"{save_file_path}/phase{phase}_W_head{h}_before_{epoch}.png"
+
         draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
+        draw_heatmap(W_h, W_h_raw_path, vmin=W_h_raw.min(), vmax=W_h_raw.max())
+
         if enable_wandb:
             image = Image.open(W_h_path)
-            wandb.log({f"W_{h}": wandb.Image(image)})
+            wandb.log({f"W_{h}_after_softmax": wandb.Image(image)})
+            image = Image.open(W_h_raw_path)
+            wandb.log({f"W_{h}_before_softmax": wandb.Image(image)})
 
-
-def draw_C_alpha_curve(C_alpha_list, save_file_path, phase=1,enable_wandb=False):
+def draw_C_alpha_curve(C_alpha_list, save_file_path, phase=1,enable_wandb=False,x_label=None):
     curve_path = f"{save_file_path}/phase{phase}_C_alpha_curve.png"
     plt.figure(figsize=(6, 6))
+    if x_label is None:
+        x_label = list(range(len(C_alpha_list[0])))
     C_alpha_list = np.array(C_alpha_list)
-    x = list(range(len(C_alpha_list)))
     for h in range(len(C_alpha_list[0])):
-        plt.plot(x, C_alpha_list[:, h], label=f'C_{h}')
+        plt.plot(list(range(len(C_alpha_list))), C_alpha_list[:, h], label=f'C_{x_label[h]}')
         plt.legend()
     plt.title('C_alpha_curve')
     plt.savefig(curve_path)
@@ -124,11 +146,13 @@ def draw_C_alpha_curve(C_alpha_list, save_file_path, phase=1,enable_wandb=False)
         image = Image.open(curve_path)
         wandb.log({"C_alpha_curve": wandb.Image(image)})
 
-def visualize_C_alpha_grad(grad, save_file_path, epoch=-1, phase=1,enable_wandb=False):
+def visualize_C_alpha_grad(grad, save_file_path, epoch=-1, phase=1,enable_wandb=False, x_label=None):
     C_alpha_grad_path = f"{save_file_path}/phase{phase}_C_alpha_grad_{epoch}.png"
     _, ax = plt.subplots(figsize=(10, 6))
     # Plot the bar of C_alpha
-    ax.bar(np.arange(len(grad)), grad)
+    if x_label is None:
+        x_label = np.arange(len(grad))
+    ax.bar(x_label, grad)
     ax.set_title('C_alpha Grad Bar')
     ax.set_xlabel('Index')
     ax.set_ylabel('Abs C_alpha Grad')
@@ -139,13 +163,15 @@ def visualize_C_alpha_grad(grad, save_file_path, epoch=-1, phase=1,enable_wandb=
         image = Image.open(C_alpha_grad_path)
         wandb.log({"C_alpha Grad Bar": wandb.Image(image)})
 
-def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch=-1, phase=1,enable_wandb=False):
+def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch=-1, phase=1,enable_wandb=False,x_label=None):
     C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
     curve_path = f"{save_file_path}/phase{phase}_C_dominance_curve.png"
     C_alpha_sqaure = C_alpha ** 2
     _, ax = plt.subplots(figsize=(10, 6))
     # Plot the bar of C_alpha
-    ax.bar(np.arange(len(C_alpha_sqaure)), C_alpha_sqaure)
+    if x_label is None:
+        x_label = np.arange(len(C_alpha_sqaure))
+    ax.bar(x_label, C_alpha_sqaure)
     ax.set_title('C_alpha Bar')
     ax.set_xlabel('Index')
     ax.set_ylabel('C_alpha')

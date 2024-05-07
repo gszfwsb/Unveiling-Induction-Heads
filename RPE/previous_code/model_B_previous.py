@@ -62,37 +62,21 @@ class TwoLayerTransformer(nn.Module):
         # for c_alpha, set all c_alpha to c_alpha_init
         nn.init.constant_(self.C_alpha_list, c_alpha_init)
 
-    # def polynomial_kernel(self, v_t, v_t_prime):
-    #     '''
-    #     v_t: [bs, d, H]
-    #     v_t_prime: [bs, d, H]
-    #     '''
-    #     # Initialize the kernel result
-    #     kernel_result = 0.0
-    #     # For each binary vector alpha, compute the product term
-    #     for idx, (C_alpha, S_alpha) in enumerate(zip(self.C_alpha_list, self.S_alpha_list)):
-    #         if len(S_alpha) == 0:
-    #             continue
-    #         support_S = torch.stack([torch.einsum('bd,bd->b',v_t[...,h], v_t_prime[..., h]) for h in S_alpha]) # |S_alpha| * ([bs, d] [bs, d] -> [bs]) -> [|S_alpha|, bs]
-    #         product_term = torch.prod(support_S, dim=0) # [bs]
-    #         kernel_result += C_alpha**2 * product_term
-    #     return kernel_result
-
     def polynomial_kernel(self, v_t, v_t_prime):
         '''
         v_t: [bs, d, H]
         v_t_prime: [bs, d, H]
         '''
+        # Initialize the kernel result
         kernel_result = 0.0
         # For each binary vector alpha, compute the product term
         for idx, (C_alpha, S_alpha) in enumerate(zip(self.C_alpha_list, self.S_alpha_list)):
             if len(S_alpha) == 0:
                 continue
-            support_S = torch.prod(torch.stack([v_t[:, :, h] * v_t_prime[:, :, h] for h in S_alpha]), dim=0) # [bs, d]
-            product_term = torch.sum(support_S, dim=1)  # Sum over dimension d to get [bs]
+            support_S = torch.stack([torch.einsum('bd,bd->b',v_t[...,h], v_t_prime[..., h]) for h in S_alpha]) # |S_alpha| * ([bs, d] [bs, d] -> [bs]) -> [|S_alpha|, bs]
+            product_term = torch.prod(support_S, dim=0) # [bs]
             kernel_result += C_alpha**2 * product_term
         return kernel_result
-
 
     def forward(self, X):
         # x: (bs, T, d)

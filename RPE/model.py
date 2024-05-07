@@ -355,7 +355,6 @@ class MultiHeadAttention(nn.Module):
 
         # Apply attention weights dropout.
         weights = self.dropout(weights)
-
         o = torch.einsum("bhnm,bmhk->bnhk", weights, v) # [batch_size, query_seq_len, num_heads, vo_embed_size_per_head]
         # Reshape to 3D tensor.
         o = torch.reshape(o, (-1, o.shape[1], self._vo_embed_size_per_head * self._num_heads)) # [batch_size, query_seq_len, vo_embed_size]
@@ -436,9 +435,9 @@ class SimplifiedLayerNorm(nn.Module):
         out = x / (norm + self.eps)
         return out
 
-class Simplified_MultiHeadAttention(nn.Module):
+class SimplifiedRelativePositionalEmbedding(nn.Module):
     def __init__(self, T, n_parent, H, w_plus, w_minus):
-        super(Simplified_MultiHeadAttention, self).__init__()
+        super(SimplifiedRelativePositionalEmbedding, self).__init__()
         self.T = T
         self.H = H
         self.W = torch.ones((self.T,self.H)) * w_minus
@@ -463,7 +462,7 @@ class Simplified_MultiHeadAttention(nn.Module):
 
 
 
-class PolyKernel_MultiHeadAttention(MultiHeadAttention):
+class PolyKernelMultiHeadAttention(MultiHeadAttention):
     def __init__(self, 
                  num_heads: int,
                  num_components: int, 
@@ -479,7 +478,7 @@ class PolyKernel_MultiHeadAttention(MultiHeadAttention):
             num_heads: Number of heads in the multi-head attention.
             num_components: Number of components in the query/key/value.
             max_individual_degree: Maximum degree of the individual component.
-            init_method: Initialization method for the C_alpha_listicients.
+            init_method: Initialization method for the C_alpha_list.
         Returns:
             None
         """
@@ -492,7 +491,7 @@ class PolyKernel_MultiHeadAttention(MultiHeadAttention):
         self.max_individual_degree = max_individual_degree
         self.num_components = num_components
 
-        # initialize the C_alpha_listicients
+        # initialize the C_alpha_list
         if init_method == "normal":
             self.C_alpha_list = nn.Parameter(torch.randn(num_heads, (max_individual_degree + 1) ** num_components)) 
         elif init_method == "zero":
@@ -502,12 +501,22 @@ class PolyKernel_MultiHeadAttention(MultiHeadAttention):
         else:
             raise ValueError("init_method should be either 'normal' or 'zero'")
 
+
         # generate a matrix where each row is a vector of degrees on each component with total degree <= max_individual_degree
         self.degrees = torch.tensor(list(itertools.product(range(max_individual_degree + 1), repeat=num_components))) # [max_individual_degree ** num_components, num_components]
         # float type
         self.degrees = self.degrees.type(torch.float32)
         # register the degrees as a buffer
         self.register_buffer("mydegree", self.degrees)
+        if "low_degree" in kwargs:
+            if kwargs["low_degree"] != -1:
+                low_degree = torch.ones(1) * kwargs["low_degree"]
+                row_sum = torch.sum(self.degrees,1)
+                selection = (row_sum<=low_degree)
+                self.C_alpha_list.data = self.C_alpha_list.data[:,selection]
+                self.degrees = self.degrees[selection]
+        print(self.degrees)
+
 
         if "a" in kwargs:
             if isinstance(kwargs["a"], float):
@@ -539,13 +548,12 @@ class PolyKernel_MultiHeadAttention(MultiHeadAttention):
         assert q_dim % self.num_components == 0
         key_new = key.view(batch_size, seq_len, self.num_components, -1)
         query_new = query.view(batch_size, query_len, self.num_components, -1)
-
         logits_shift = torch.einsum("bqcd,bscd->bqsc", query_new, key_new) # [batch_size, query_len, seq_len, num_components]
         logits_shift = torch.exp(torch.einsum("bqsc,lc->bqsl", torch.log(logits_shift + 1e-24), self.degrees.to(logits_shift.device))) # [batch_size, query_len, seq_len, num_components ** max_individual_degree]
         logits_shift = torch.einsum("bqsl,hl->bhqs", logits_shift, self.C_alpha_list ** 2) # [batch_size, num_heads, query_len, seq_len]
-
-        # layer normalization
         logits_shift = logits_shift / self.C_alpha_list.norm(dim=-1, keepdim=True) ** 2
+        logits_shift = logits_shift / self.C_alpha_list.norm(dim=-1, keepdim=True) ** 2
+        # layer normalization
         
         o, _ = super().forward(query, torch.zeros_like(key, device=key.device), value, logits_shift=logits_shift * self.a)
         return o.squeeze(1)
@@ -560,14 +568,15 @@ class TwoLayerTransformer(nn.Module):
                 w_minus,
                 a_init,
                 c_alpha_init,
-                n_parent):
+                n_parent,
+                low_degree=-1):
         super(TwoLayerTransformer, self).__init__()
         self.T = seq_length
         self.H = num_heads
         self.d = vocab_size
         self.n_parent = n_parent
         # layer 1: attention
-        self.layer1 = Simplified_MultiHeadAttention(
+        self.layer1 = SimplifiedRelativePositionalEmbedding(
             T=self.T, 
             n_parent=self.n_parent,
             H=self.H, 
@@ -575,22 +584,25 @@ class TwoLayerTransformer(nn.Module):
             w_minus=w_minus
         )
         # layer 2: attention
-        self.layer2 = PolyKernel_MultiHeadAttention(
+        self.layer2 = PolyKernelMultiHeadAttention(
             num_heads=1,
-            num_components=self.H,
+            num_components=self.H+1,
             dimension=self.d,
             max_individual_degree=1,
             init_method="ones",
             a = "learnable",
-            a_init = a_init
+            a_init = a_init,
+            low_degree = low_degree
         )
         # init params
         self.layer2.C_alpha_list.data = torch.ones_like(self.layer2.C_alpha_list.data) * c_alpha_init
 
     def forward(self, X):
-        X = self.layer1(X) # [bs, T+1, d, H]
+        X = self.layer1(X) # [bs, T+1, d*(H+1)]
+        assert X.shape[1] == self.T+1 and X.shape[2] == self.d * (1+self.H)
         X = X.view(X.shape[0], X.shape[1], -1)
-        X = self.layer2(X[..., -1:, self.d:], X[..., :-1, self.d:], X[..., :-1, 0:self.d])
+        q, k, v = X[..., -1:, :], X[..., :-1, :], X[..., :-1, 0:self.d]
+        X = self.layer2(q,k,v)
         return X
   
 
