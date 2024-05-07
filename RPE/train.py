@@ -194,7 +194,8 @@ for epoch in pbar:
         C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
         C_list.append(C_alpha_list)
         _, max_index, dominance_value = check_dominate_C(C_alpha_list)
-        max_index = selection[max_index]
+        if selection:
+            max_index = selection[max_index]
         dominating_C_alpha_index.append(max_index)
         dominating_C_alpha_value.append(dominance_value)
     if epoch % eval_freq == 0:
