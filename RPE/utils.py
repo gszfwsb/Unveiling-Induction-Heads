@@ -47,7 +47,7 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5, normalize=False):
     plt.close()
 
 def draw_curves(train_data, val_data, val_acc, save_file_path, phase=1,enable_wandb=False):
-    curve_path = f"{save_file_path}/phase{phase}_curve.png"
+    curve_path = f"{save_file_path}/phase{phase}_curve.svg"
     plt.figure(figsize=(15, 6))
     x = list(range(len(train_data)))
     plt.subplot(131)
@@ -69,7 +69,7 @@ def draw_curves(train_data, val_data, val_acc, save_file_path, phase=1,enable_wa
         wandb.log({"Learning Dynamics": wandb.Image(image)})
 
 def draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=False):
-    curve_path = f"{save_file_path}/phase{phase}_a_curve.png"
+    curve_path = f"{save_file_path}/phase{phase}_a_curve.svg"
     plt.figure(figsize=(6, 6))
     x = list(range(len(a_list)))
     plt.plot(x,a_list)
@@ -110,7 +110,7 @@ def create_matrix_W_h(W, H, n, T, h):
 
 
 def visualize_W(W, H, T, n, save_file_path, epoch=-1, phase=1,enable_wandb=False):
-    W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
+    W_path = f"{save_file_path}/phase{phase}_W_{epoch}.svg"
     W_thres = max(W.max(),abs(W.min()))
     draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
     if enable_wandb:
@@ -118,8 +118,8 @@ def visualize_W(W, H, T, n, save_file_path, epoch=-1, phase=1,enable_wandb=False
         wandb.log({"W": wandb.Image(image)})
     for h in range(W.shape[1]):
         W_h_raw, W_h = create_matrix_W_h(W[:,h], H, n, T, h)
-        W_h_path = f"{save_file_path}/phase{phase}_W_head{h}_{epoch}.png"
-        W_h_raw_path = f"{save_file_path}/phase{phase}_W_head{h}_before_{epoch}.png"
+        W_h_path = f"{save_file_path}/phase{phase}_W_head{h}_{epoch}.svg"
+        W_h_raw_path = f"{save_file_path}/phase{phase}_W_head{h}_before_{epoch}.svg"
 
         draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
         draw_heatmap(W_h, W_h_raw_path, vmin=W_h_raw.min(), vmax=W_h_raw.max())
@@ -131,7 +131,7 @@ def visualize_W(W, H, T, n, save_file_path, epoch=-1, phase=1,enable_wandb=False
             wandb.log({f"W_{h}_before_softmax": wandb.Image(image)})
 
 def draw_C_alpha_curve(C_alpha_list, save_file_path, phase=1,enable_wandb=False,x_label=None):
-    curve_path = f"{save_file_path}/phase{phase}_C_alpha_curve.png"
+    curve_path = f"{save_file_path}/phase{phase}_C_alpha_curve.svg"
     plt.figure(figsize=(6, 6))
     if x_label is None:
         x_label = list(range(len(C_alpha_list[0])))
@@ -147,7 +147,7 @@ def draw_C_alpha_curve(C_alpha_list, save_file_path, phase=1,enable_wandb=False,
         wandb.log({"C_alpha_curve": wandb.Image(image)})
 
 def visualize_C_alpha_grad(grad, save_file_path, epoch=-1, phase=1,enable_wandb=False, x_label=None):
-    C_alpha_grad_path = f"{save_file_path}/phase{phase}_C_alpha_grad_{epoch}.png"
+    C_alpha_grad_path = f"{save_file_path}/phase{phase}_C_alpha_grad_{epoch}.svg"
     _, ax = plt.subplots(figsize=(10, 6))
     # Plot the bar of C_alpha
     if x_label is None:
@@ -164,8 +164,8 @@ def visualize_C_alpha_grad(grad, save_file_path, epoch=-1, phase=1,enable_wandb=
         wandb.log({"C_alpha Grad Bar": wandb.Image(image)})
 
 def visualize_C_alpha(C_alpha, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch=-1, phase=1,enable_wandb=False,x_label=None):
-    C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
-    curve_path = f"{save_file_path}/phase{phase}_C_dominance_curve.png"
+    C_alpha_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.svg"
+    curve_path = f"{save_file_path}/phase{phase}_C_dominance_curve.svg"
     C_alpha_sqaure = C_alpha ** 2
     _, ax = plt.subplots(figsize=(10, 6))
     # Plot the bar of C_alpha
