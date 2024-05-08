@@ -1,23 +1,8 @@
-# train with 2 time-scale
-# python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 --enable-wandb True # works!!!
-# python3 train_independently_model_B_fix_a_first.py --w-plus 0.05 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 --enable-wandb True # works!!!
-# python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 --enable-wandb True --low-degree 3 # works!!!
-# python3 train_independently_model_B_fix_a_first.py --w-plus 0.05 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 --enable-wandb True --low-degree 3 # works!!!
-# python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 --enable-wandb True --low-degree 2 # works!!!
-# python3 train_independently_model_B_fix_a_first.py --w-plus 0.05 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 --enable-wandb True --low-degree 2 # works!!!
+python3 train_independently_model_B_fix_a_first.py --vocab-size 3 --seq-length 100 --n-heads 3 --n-gram 3 --w-plus 2 --c-alpha 0.01 --device cuda:2 --n-epochs 2000 --lr1 1 --lr2 1  # works!!!
+python3 train_independently_model_B_fix_a_first.py --vocab-size 3 --seq-length 100 --n-heads 3 --n-gram 3 --w-plus 1 --c-alpha 0.01 --device cuda:1 --n-epochs 2000 --lr1 1 --lr2 1  # works!!!
 
 
-
-# # train with 1 time-scale
-# python3 train.py --w-plus 1 --device cuda:2 --n-epochs 5000 --lr 1e2 --enable-wandb True # works!!!
-# python3 train.py --w-plus 1 --device cuda:2 --n-epochs 5000 --lr 1e2 --enable-wandb True --low-degree 3 # works!!!
-# python3 train.py --w-plus 1 --device cuda:2 --n-epochs 5000 --lr 1e2 --enable-wandb True --low-degree 2 # works!!!
-
-
-
-
-
-python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3  # works!!!
-python3 train_independently_model_B_fix_a_first.py --w-plus 100 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3  # works!!!
-python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3  --low-degree 3 # works!!!
-python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3  --low-degree 2 # works!!!
+#### low degree
+python3 train_independently_model_B_fix_a_first.py --vocab-size 3 --seq-length 100 --n-heads 5 --n-gram 4 --w-plus 2 --c-alpha 0.01 --device cuda:0 --n-epochs 2000 --lr1 1 --lr2 1  # works!!!
+python3 train_independently_model_B_fix_a_first.py --vocab-size 3 --seq-length 100 --n-heads 5 --n-gram 4 --w-plus 2 --c-alpha 0.01 --device cuda:1 --n-epochs 2000 --lr1 1 --lr2 1  --low-degree 3 # works!!!
+python3 train_independently_model_B_fix_a_first.py --vocab-size 3 --seq-length 100 --n-heads 5 --n-gram 4 --w-plus 2 --c-alpha 0.01 --device cuda:2 --n-epochs 2000 --lr1 1 --lr2 1  --low-degree 2 # works!!!

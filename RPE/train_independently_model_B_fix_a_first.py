@@ -71,7 +71,7 @@ w_plus = args.w_plus
 w_minus = args.w_minus
 low_degree = args.low_degree
 # Define the file paths
-method_args = f'Formal_fix_a_first_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
+method_args = f'Formal_fix_a_first_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr1{lr1}_lr2{lr2}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
 root_path = './data'
 save_file_path = f'results/{dataset}/{method_args}'
 makedirs(save_file_path)
@@ -134,24 +134,23 @@ wandb.init(project='ICL',
            config=vars(args)
 )
 
-# test before
-selection = None
-if low_degree !=-1:
-    alpha_list = torch.tensor([
-        [int(i) for i in format(num, f'0{H+1}b')] 
-        for num in range(2**(H+1))
-    ], dtype=int)
-    row_sum = torch.sum(alpha_list, 1)
-    selection = torch.where(row_sum<=low_degree)[0]
+
+
+degrees = model.layer2.degrees.data.clone().cpu().detach().numpy()
+remain_pos = np.where(degrees[:, 0]==0)[0]
+degrees = degrees[remain_pos] # only for those exclude X_tilde
+alphas =  [''.join(row.astype(int).astype(str)) for row in degrees]
 
 C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
-visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1, enable_wandb=enable_wandb,x_label=selection)
+C_alpha_list = C_alpha_list[remain_pos]
+
+bar_path = f"{save_file_path}/phase1_C_alpha_init.png"
+draw_bar(C_alpha_list, alphas, bar_path)
 W = model.layer1.W.clone().cpu().detach().numpy()
-visualize_W(W, H, L, n-1, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
+visualize_W(W, H, L, n-1, save_file_path, 'init', phase=1)
 
 # train W and C_alpha first
 train_loss_list, val_loss_list, val_acc_list = [], [], []
-dominating_C_alpha_index, dominating_C_alpha_value = [], []
 C_list = []
 C_list.append(C_alpha_list)
 pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
@@ -173,8 +172,9 @@ for epoch in pbar:
         train_loss += loss.item()
         if epoch % eval_freq == 0:
             C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
-            C_alpha_grad = np.abs(C_alpha_grad)
-            visualize_C_alpha_grad(C_alpha_grad,  save_file_path, epoch, phase=1,enable_wandb=enable_wandb,x_label=selection)
+            C_alpha_grad = C_alpha_grad[remain_pos]
+            bar_path = f"{save_file_path}/phase1_grad_C_alpha_{epoch}.png"
+            draw_bar(C_alpha_grad, alphas, bar_path)
             # print(model.layer1.W.grad.data.clone().detach().cpu().numpy())
     train_loss_list.append(train_loss / n_train)
 
@@ -195,19 +195,19 @@ for epoch in pbar:
         val_acc_list.append(total_correct / n_val)           
         val_loss_list.append(eval_loss / n_val)
         C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
+        C_alpha_list = C_alpha_list[remain_pos]
         C_list.append(C_alpha_list)
-        _, max_index, dominance_value = check_dominate_C(C_alpha_list)
-        if selection:
-            max_index = selection[max_index]
-        dominating_C_alpha_index.append(max_index)
-        dominating_C_alpha_value.append(dominance_value)
     if epoch % eval_freq == 0:
-        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
+        curve_path = f"{save_file_path}/phase1_curve.png"
+        draw_curves(train_loss_list, val_loss_list, val_acc_list, curve_path)
         W = model.layer1.W.clone().cpu().detach().numpy()
-        visualize_W(W, H, L, n-1, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
+        visualize_W(W, H, L, n-1, save_file_path, epoch, phase=1)
         C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
-        draw_C_alpha_curve(C_list, save_file_path, phase=1, enable_wandb=enable_wandb,x_label=selection)
-        visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1,enable_wandb=enable_wandb,x_label=selection)
+        C_alpha_list = C_alpha_list[remain_pos]
+        curve_path = f"{save_file_path}/phase1_C_alpha_curve.png"
+        draw_C_alpha_curve(C_list, alphas, curve_path)
+        bar_path = f"{save_file_path}/phase1_C_alpha_{epoch}.png"
+        draw_bar(C_alpha_list, alphas, bar_path)
 # train a second
 train_loss_list, val_loss_list, val_acc_list = [], [], []
 a_list = []
@@ -248,15 +248,22 @@ for epoch in pbar:
         val_loss_list.append(eval_loss / n_val)
         a_list.append(model.layer2.a.item())
     if epoch % eval_freq == 0:
-        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2,enable_wandb=enable_wandb)
-        draw_a_curve(a_list, save_file_path, phase=2,enable_wandb=enable_wandb)
+        curve_path = f"{save_file_path}/phase2_curve.png"
+        draw_curves(train_loss_list, val_loss_list, val_acc_list, curve_path)
+        curve_path = f"{save_file_path}/phase2_a_curve.png"
+        draw_a_curve(a_list, curve_path)
 
 
 
 W = model.layer1.W.clone().cpu().detach().numpy()
 C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
-visualize_W(W, H, L, n-1, save_file_path, 'end', phase=2,enable_wandb=enable_wandb)
-visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=2,enable_wandb=enable_wandb,x_label=selection)
-draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=2,enable_wandb=enable_wandb)
-draw_a_curve(a_list, save_file_path, phase=2,enable_wandb=enable_wandb)
-draw_C_alpha_curve(C_list, save_file_path, phase=2, enable_wandb=enable_wandb,x_label=selection)
+C_alpha_list = C_alpha_list[remain_pos]
+visualize_W(W, H, L, n-1, save_file_path, 'end', phase=2)
+bar_path = f"{save_file_path}/phase2_C_alpha_end.png"
+draw_bar(C_alpha_list, alphas, bar_path)
+curve_path = f"{save_file_path}/phase2_curve.png"
+draw_curves(train_loss_list, val_loss_list, val_acc_list, curve_path)
+curve_path = f"{save_file_path}/phase2_a_curve.png"
+draw_a_curve(a_list, curve_path)
+curve_path = f"{save_file_path}/phase2_C_alpha_curve.png"
+draw_C_alpha_curve(C_list, alphas, curve_path)

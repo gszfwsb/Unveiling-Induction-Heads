@@ -3,7 +3,7 @@ import torch.distributions as dist
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 from typing import Any, Dict
-
+from tqdm import tqdm
 
 class MarkovDataset(Dataset):
     def __init__(self, S, L, alpha, n_sample):
@@ -61,7 +61,8 @@ class NGramDataset(Dataset):
         self.samples = torch.empty(self.n_sample, self.L + 1, dtype = torch.long)
         if output:
             print('Generating datasets...')
-        for j in range(n_sample):
+        pbar = tqdm(range(n_sample), mininterval=1, ncols=100)
+        for j in pbar:
             self.sample()  # regenerate pi
             sequence = torch.empty(self.L + 1, dtype=torch.long)
             sequence[:self.n-1] = dist.Categorical(probs=self.mu_pi).sample((self.n-1,)) # uniformly sample
