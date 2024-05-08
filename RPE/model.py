@@ -537,7 +537,7 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
             if kwargs["low_degree"] != -1:
                 low_degree = torch.ones(1) * kwargs["low_degree"]
                 row_sum = torch.sum(self.degrees,1)
-                selection = (row_sum<=low_degree)
+                selection = torch.where(row_sum<=low_degree)[0]
                 self.C_alpha_list.data = self.C_alpha_list.data[:,selection]
                 self.degrees = self.degrees[selection]
         print(self.degrees)
@@ -576,7 +576,6 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
         logits_shift = torch.einsum("bqcd,bscd->bqsc", query_new, key_new) # [batch_size, query_len, seq_len, num_components]
         logits_shift = torch.exp(torch.einsum("bqsc,lc->bqsl", torch.log(logits_shift + 1e-24), self.degrees.to(logits_shift.device))) # [batch_size, query_len, seq_len, num_components ** max_individual_degree]
         logits_shift = torch.einsum("bqsl,hl->bhqs", logits_shift, self.C_alpha_list ** 2) # [batch_size, num_heads, query_len, seq_len]
-        logits_shift = logits_shift / self.C_alpha_list[:,self.remain_pos].norm(dim=-1, keepdim=True) ** 2
         logits_shift = logits_shift / self.C_alpha_list[:,self.remain_pos].norm(dim=-1, keepdim=True) ** 2
         # layer normalization
         

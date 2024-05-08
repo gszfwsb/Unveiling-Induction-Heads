@@ -77,7 +77,10 @@ save_file_path = f'results/{dataset}/{method_args}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
-model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree)
+if low_degree != -1:
+    model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree)
+else:
+    model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1)
 model.to(device)
 
 
