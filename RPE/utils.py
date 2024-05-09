@@ -39,18 +39,16 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
     # Close plt figure to free memory
     plt.close()
 
-def draw_curves(train_data, val_data, val_acc, curve_path):
+def draw_curves(train_data, val_data, curve_path):
     plt.figure(figsize=(15, 6))
     x = list(range(len(train_data)))
-    plt.subplot(131)
+    plt.subplot(121)
     plt.plot(x,train_data,label='train',color='green')
     plt.title('train loss')
-    plt.subplot(132)
+    plt.subplot(122)
     plt.plot(x,val_data,label='val',color='blue')
     plt.title('val loss')
     plt.subplot(133)
-    plt.plot(x,val_acc,label='acc',color='orange')
-    plt.title('val acc')
     plt.tight_layout()
     # Save the curve to a file
     plt.savefig(curve_path)

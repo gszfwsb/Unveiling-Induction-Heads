@@ -22,13 +22,15 @@ parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
 parser.add_argument('--vocab-size',type=int,default=3)
 parser.add_argument('--seq-length',type=int, default=100)
 parser.add_argument('--n-heads',type=int, default=3)
-parser.add_argument('--lr',type=float, default=1e5)
+parser.add_argument('--lr1',type=float, default=1)
+parser.add_argument('--lr2',type=float, default=1)
+parser.add_argument('--lr3',type=float, default=1)
 parser.add_argument('--batch-size',type=int, default=100000)
 parser.add_argument('--seed',type=int, default=2024)
 parser.add_argument('--n-sample',type=int,default=10000)
 parser.add_argument('--device',type=str, default='cuda:3')
 parser.add_argument('--dataset',type=str,default='NGram')
-parser.add_argument('--w-plus',type=float,default=0.1)
+parser.add_argument('--w-plus',type=float,default=1)
 parser.add_argument('--w-minus',type=float,default=0.01)
 parser.add_argument('--optim',type=str,default='sgd')
 parser.add_argument('--a',type=float,default=0.01)
@@ -37,6 +39,7 @@ parser.add_argument('--alpha',type=float,default=0.1)
 parser.add_argument('--n-epochs',type=int,default=10000)
 parser.add_argument('--n-gram',type=int,default=3)
 parser.add_argument('--low-degree',type=int,default=-1)
+parser.add_argument('--train-cmd', action='append', type=str)
 parser.add_argument('--enable-wandb',type=bool,default=False)
 
 
@@ -57,7 +60,9 @@ a_init = args.a
 # training setting
 bs = args.batch_size
 n_sample = args.n_sample
-lr = args.lr
+lr1 = args.lr1
+lr2= args.lr2
+lr3=args.lr3
 dataset = args.dataset
 optim_method = args.optim
 n_epochs = args.n_epochs
@@ -68,14 +73,18 @@ c_alpha_init = args.c_alpha
 w_plus = args.w_plus
 w_minus = args.w_minus
 low_degree = args.low_degree
+train_cmd = args.train_cmd
 # Define the file paths
-method_args = f'Formal_parent{n}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
+method_args = f'Formal_{train_cmd}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr1{lr1}_lr2{lr2}_lr3{lr3}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
 root_path = './data'
 save_file_path = f'results/{dataset}/{method_args}'
 makedirs(save_file_path)
 
 # Generate the TwoLayerCausalTransformer
-model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree)
+if low_degree != -1:
+    model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree)
+else:
+    model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1)
 model.to(device)
 
 
@@ -84,7 +93,6 @@ model.to(device)
 criterion = population_loss(ignore_idx)
 
 
-# lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=n_epochs//10, gamma=0.5, last_epoch=-1)
 
 data_path = f'./data/{dataset}/vocab{S}-seq{L}-alpha{alpha}' if dataset == 'Markov' else f'./data/{dataset}/vocab{S}-seq{L}-n{n}-alpha{alpha}'
 makedirs(data_path)
@@ -111,106 +119,168 @@ val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=Fal
 eval_freq = min(n_epochs//10, 500)
 
 
- 
-# define optimizers and schedulars
-if optim_method == 'sgd':
-    optimizer = optim.SGD(model.parameters(), lr=lr, weight_decay=0, momentum=0)
-elif optim_method == 'adam':
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-else:
-    raise NotImplementedError(f'{optim_method} not supported!')
+degrees = model.layer2.degrees.data.clone().cpu().detach().numpy()
+remain_pos = np.where(degrees[:, 0]==0)[0]
+degrees = degrees[remain_pos] # only for those exclude X_tilde
+alphas =  [''.join(row.astype(int).astype(str)) for row in degrees]
+print(alphas)
 
-# wandb init
-wandb.init(project='ICL', 
-           entity='Transformer-n-grams', 
-           name=f'{method_args}',
-           config=vars(args)
-)
-
-# test before
-selection = None
-if low_degree !=-1:
-    alpha_list = torch.tensor([
-        [int(i) for i in format(num, f'0{H+1}b')] 
-        for num in range(2**(H+1))
-    ], dtype=int)
-    row_sum = torch.sum(alpha_list, 1)
-    selection = torch.where(row_sum<=low_degree)[0]
+def plot_begin(model, remain_pos, alphas, H, L, n, save_file_path):
+    C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+    C_alpha_list = C_alpha_list[remain_pos]
+    bar_path = f"{save_file_path}/phase1_C_alpha_init.png"
+    draw_bar(C_alpha_list, alphas, bar_path)
+    W = model.layer1.W.clone().cpu().detach().numpy()
+    visualize_W(W, H, L, n-1, save_file_path, 'init', phase=1)
 
 
-C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
-visualize_C_alpha(C_alpha_list, [], [], save_file_path, 'init', phase=1, enable_wandb=enable_wandb, x_label=selection)
-W = model.layer1.W.clone().cpu().detach().numpy()
-visualize_W(W, H, L, n-1, save_file_path, 'init', phase=1, enable_wandb=enable_wandb)
+def generate_train_flags(train_cmd):
+    train_flags = []
+    for param in train_cmd:
+        flags = [False, False, False]
+        for char in param:
+            if char == 'C':
+                flags[0] = True
+            elif char == 'W':
+                flags[1] = True
+            elif char == 'a':
+                flags[2] = True
+        if flags == [False, False, False]:
+            continue
+        train_flags.append(flags)
+    return train_flags
 
-train_loss_list, val_loss_list, val_acc_list = [], [], []
-a_list = []
-a_list.append(model.layer2.a.item())
-dominating_C_alpha_index, dominating_C_alpha_value = [], []
-pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
-C_list = []
-C_list.append(C_alpha_list)
-for epoch in pbar:
-    model.train()
-    train_loss, eval_loss = 0, 0
-    for x, y in train_loader:
-        # assert not (torch.isnan(x).any() or torch.isnan(x).any())
-        x, y = x.to(device), y.to(device)
-        optimizer.zero_grad()
-        logits = model(x) # [bs, S]
-        loss = criterion(logits, y)
-        loss.backward()
-        optimizer.step()
-        # Update the learning rate
-        # lr_scheduler.step()
+def plot_end(model, remain_pos, alphas, W, H, L, n, save_file_path, phase=2):
+    C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
+    C_alpha_list = C_alpha_list[remain_pos]
+    W = model.layer1.W.clone().cpu().detach().numpy()
+    visualize_W(W, H, L, n-1, save_file_path, 'end', phase=phase)
+    bar_path = f"{save_file_path}/phase{phase}_C_alpha_end.png"
+    draw_bar(C_alpha_list, alphas, bar_path)
+    curve_path = f"{save_file_path}/phase{phase}_curve.png"
+    draw_curves(train_loss_list, val_loss_list, curve_path)
+    curve_path = f"{save_file_path}/phase{phase}_a_curve.png"
+    draw_a_curve(a_list, curve_path)
+    curve_path = f"{save_file_path}/phase{phase}_C_alpha_curve.png"
+    draw_C_alpha_curve(C_list, alphas, curve_path)
 
-        pbar.set_description(f'Train loss:{loss.item():.10f}')
-        
-        train_loss += loss.item()
-        if epoch % eval_freq == 0:
-            C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
-            C_alpha_grad = np.abs(C_alpha_grad)
-            visualize_C_alpha_grad(C_alpha_grad,  save_file_path, epoch, phase=1,enable_wandb=enable_wandb,x_label=selection)
-            # print(model.layer1.W.grad.data.clone().detach().cpu().numpy())
-    train_loss_list.append(train_loss / n_train)
+def train(model, 
+        train_loader, 
+        val_loader, 
+        n_train, 
+        n_val,
+        remain_pos,
+        criterion, 
+        alphas,
+        lr1,
+        lr2,
+        lr3,
+        phase,
+        save_file_path,
+        train_C=False, 
+        train_W=False, 
+        train_a=False,
+        eval_freq=500,
+        ):
+    train_loss_list, val_loss_list = [], []
+    pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
-    model.eval()
-    total_correct = 0
-    with torch.no_grad():
-        for x, y in val_loader:
-            # assert not (torch.isnan(x).any() or torch.isnan(x).any())
+    param_groups = []
+    if train_C:
+        param_groups.append({'params': model.layer2.C_alpha_list, 'lr': lr1})
+        C_list = []
+        C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+        C_alpha_list = C_alpha_list[remain_pos]
+        C_list.append(C_alpha_list)
+    if train_W:
+        param_groups.append({'params': model.layer1.W, 'lr': lr2})
+    if train_a:
+        param_groups.append({'params': model.layer2.a, 'lr': lr3})
+        a_list = []
+        a_list.append(model.layer2.a.item())
+    optimizer = optim.SGD(param_groups, momentum=0, weight_decay=0)
+    for epoch in pbar:
+        model.train()
+        train_loss, eval_loss = 0, 0
+        for x, y in train_loader:
             x, y = x.to(device), y.to(device)
+            optimizer.zero_grad()
             logits = model(x) # [bs, S]
             loss = criterion(logits, y)
-            eval_loss += loss.item()
-             # Calculate accuracy
-            predicted = torch.argmax(logits, dim=-1)  # Get the index of the max log-probability
-            total_correct += (predicted.squeeze() == y).sum().item()
-            # scheduler.step()
-            pbar.set_description(f'Val loss:{loss.item():.10f}')
-        val_acc_list.append(total_correct / n_val)           
-        val_loss_list.append(eval_loss / n_val)
-        a_list.append(model.layer2.a.item())
-        C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
-        C_list.append(C_alpha_list)
-        _, max_index, dominance_value = check_dominate_C(C_alpha_list)
-        if selection:
-            max_index = selection[max_index]
-        dominating_C_alpha_index.append(max_index)
-        dominating_C_alpha_value.append(dominance_value)
-    if epoch % eval_freq == 0:
-        C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
-        visualize_C_alpha(C_alpha_list,  dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, epoch, phase=1,enable_wandb=enable_wandb, x_label=selection)
-        draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
-        draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=enable_wandb)
-        draw_C_alpha_curve(C_list, save_file_path, phase=1, enable_wandb=enable_wandb,x_label=selection)
-        W = model.layer1.W.clone().cpu().detach().numpy()
-        visualize_W(W, H, L, n-1, save_file_path, epoch, phase=1,enable_wandb=enable_wandb)
+            loss.backward()
+            optimizer.step()
+            pbar.set_description(f'Train loss:{loss.item():.10f}')
+            train_loss += loss.item()
+            if epoch % eval_freq == 0:
+                if train_C:
+                    C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
+                    C_alpha_grad = C_alpha_grad[remain_pos]
+                    bar_path = f"{save_file_path}/phase{phase}_grad_C_alpha_{epoch}.png"
+                    draw_bar(C_alpha_grad, alphas, bar_path)
+        train_loss_list.append(train_loss / n_train)
+        model.eval()
+        with torch.no_grad():
+            for x, y in val_loader:
+                x, y = x.to(device), y.to(device)
+                logits = model(x) # [bs, S]
+                loss = criterion(logits, y)
+                eval_loss += loss.item()
+                pbar.set_description(f'Val loss:{loss.item():.10f}')
+            val_loss_list.append(eval_loss / n_val)
+            if train_a:
+                a_list.append(model.layer2.a.item())
+            if train_C:
+                C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
+                C_alpha_list = C_alpha_list[remain_pos]
+                C_list.append(C_alpha_list)
+        if epoch % eval_freq == 0:
+            curve_path = f"{save_file_path}/phase{phase}_curve.png"
+            draw_curves(train_loss_list, val_loss_list, curve_path)
+            if train_C:
+                C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+                C_alpha_list = C_alpha_list[remain_pos]
+                curve_path = f"{save_file_path}/phase{phase}_C_alpha_curve.png"
+                draw_C_alpha_curve(C_list, alphas, curve_path)
+                bar_path = f"{save_file_path}/phase{phase}_C_alpha_{epoch}.png"
+                draw_bar(C_alpha_list, alphas, bar_path)
+            if train_W:
+                W = model.layer1.W.clone().cpu().detach().numpy()
+                visualize_W(W, H, L, n-1, save_file_path, epoch, phase=phase)
+            if train_a:
+                curve_path = f"{save_file_path}/phase{phase}_a_curve.png"
+                draw_a_curve(a_list, curve_path)
 
-W = model.layer1.W.clone().cpu().detach().numpy()
-C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
-visualize_W(W, H, L, n-1, save_file_path, 'end', phase=1,enable_wandb=enable_wandb)
-visualize_C_alpha(C_alpha_list, dominating_C_alpha_value, dominating_C_alpha_index, save_file_path, 'end', phase=1,enable_wandb=enable_wandb, x_label=selection)
-draw_curves(train_loss_list, val_loss_list, val_acc_list, save_file_path, phase=1,enable_wandb=enable_wandb)
-draw_a_curve(a_list, save_file_path, phase=1,enable_wandb=enable_wandb)
-draw_C_alpha_curve(C_list, save_file_path, phase=1, enable_wandb=enable_wandb,x_label=selection)
+
+
+
+plot_begin(model, remain_pos, alphas, H, L, n, save_file_path)
+
+
+train_flags = generate_train_flags(train_cmd)
+
+print(train_flags)
+
+for phase, train_flag in enumerate(train_flags):
+    train_C, train_W, train_a = train_flag[0], train_flag[1], train_flag[2]
+    train(model, 
+        train_loader, 
+        val_loader, 
+        n_train,
+        n_val, 
+        remain_pos,
+        criterion, 
+        alphas,
+        lr1,
+        lr2,
+        lr3,
+        phase+1,
+        save_file_path,
+        train_C=train_C, 
+        train_W=train_W, 
+        train_a=train_a,
+        eval_freq=500,
+    )
+
+
+
+plot_end(model, remain_pos, alphas, H, L, n, save_file_path, phase=3)

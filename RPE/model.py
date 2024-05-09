@@ -540,7 +540,7 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
                 selection = torch.where(row_sum<=low_degree)[0]
                 self.C_alpha_list.data = self.C_alpha_list.data[:,selection]
                 self.degrees = self.degrees[selection]
-        print(self.degrees)
+        # print(self.degrees)
         self.remain_pos = torch.where(self.degrees[:,0] == 0)[0]
 
         if "a" in kwargs:
