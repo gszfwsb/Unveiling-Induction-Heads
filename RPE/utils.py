@@ -7,7 +7,7 @@ from PIL import Image
 import torch.nn.functional as F
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib import gridspec
-
+from tools import makedirs
 
 colors = ["green", "lime", "white", "pink", "deeppink"]  # Corrected color name
 CMAP = LinearSegmentedColormap.from_list("custom_cmap", colors, N=256)
@@ -20,6 +20,7 @@ def population_loss(ignore_idx):
 
 def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
     # Create a heatmap using matplotlib and your desired colormap
+    makedirs(heatmap_path)
     if len(data.shape) == 1:
         data = data.reshape(-1, 1)
     # Create a figure with a gridspec that defines a 1x2 grid
@@ -40,6 +41,7 @@ def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
     plt.close()
 
 def draw_curves(train_data, val_data, curve_path):
+    makedirs(curve_path)
     plt.figure(figsize=(15, 6))
     x = list(range(len(train_data)))
     plt.subplot(121)
@@ -48,7 +50,6 @@ def draw_curves(train_data, val_data, curve_path):
     plt.subplot(122)
     plt.plot(x,val_data,label='val',color='blue')
     plt.title('val loss')
-    plt.subplot(133)
     plt.tight_layout()
     # Save the curve to a file
     plt.savefig(curve_path)
@@ -57,6 +58,7 @@ def draw_curves(train_data, val_data, curve_path):
 
 
 def draw_a_curve(a_list, curve_path):
+    makedirs(curve_path)
     plt.figure(figsize=(6, 6))
     x = list(range(len(a_list)))
     plt.plot(x,a_list)
@@ -94,23 +96,29 @@ def create_matrix_W_h(W, H, n, T, h):
     return W_h_raw, W_h_np
 
 
-def visualize_W(W, H, T, n, save_file_path, epoch=-1, phase=1,sub_size=10):
-    W_path = f"{save_file_path}/phase{phase}_W_{epoch}.png"
+def visualize_W(W, H, T, n, save_file_path, epoch=-1, sub_size=10):
+    W_path = f"{save_file_path}/W/{epoch}.svg"
+    makedirs(f"{save_file_path}/W")
     W_thres = max(W.max(),abs(W.min()))
     draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
     for h in range(W.shape[1]):
         W_h_raw, W_h = create_matrix_W_h(W[:,h], H, n, T, h)
-        W_h_path = f"{save_file_path}/phase{phase}_W_head{h}_{epoch}.png"
-        W_h_raw_path = f"{save_file_path}/phase{phase}_W_head{h}_before_{epoch}.png"
+        W_h_path = f"{save_file_path}/W_head{h}/raw/{epoch}.svg"
+        W_h_raw_path = f"{save_file_path}/W_head{h}_before/raw/{epoch}.svg"
+        makedirs(f"{save_file_path}/W_head{h}/raw")
+        makedirs(f"{save_file_path}/W_head{h}_before/{sub_size}")
+        makedirs(f"{save_file_path}/W_head{h}/raw")
+        makedirs(f"{save_file_path}/W_head{h}_before/{sub_size}")
         draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
         draw_heatmap(W_h, W_h_raw_path, vmin=W_h_raw.min(), vmax=W_h_raw.max())
         W_h_raw, W_h = W_h_raw[:sub_size,:sub_size], W_h[:sub_size,:sub_size]
-        W_h_path = f"{save_file_path}/phase{phase}_W_head{h}_after_{sub_size}_{epoch}.png"
-        W_h_raw_path = f"{save_file_path}/phase{phase}_W_head{h}_before_{sub_size}_{epoch}.png"
+        W_h_path = f"{save_file_path}/W_head{h}/{sub_size}/{epoch}.svg"
+        W_h_raw_path = f"{save_file_path}/W_head{h}_before/{sub_size}/{epoch}.svg"
         draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
         draw_heatmap(W_h, W_h_raw_path, vmin=W_h_raw.min(), vmax=W_h_raw.max())
 
 def draw_C_alpha_curve(C_alpha_list, x_label, curve_path):
+    makedirs(curve_path)
     scale = len(x_label) / 12
     plt.figure(figsize=(15*scale, 6*scale))
     plt.subplot(121)
@@ -129,12 +137,14 @@ def draw_C_alpha_curve(C_alpha_list, x_label, curve_path):
     plt.close('all')
 
 def draw_bar(data, x_label, bar_path):
+    makedirs(bar_path)
     scale = len(x_label) / 12
     _, ax = plt.subplots(figsize=(10*scale, 6*scale))
     # Plot the bar of C_alpha
     ax.bar(x_label, data)
     ax.set_xlabel('Index')
     ax.set_ylabel('Value')
+    plt.tight_layout()
     plt.savefig(bar_path)
     plt.close('all')
 

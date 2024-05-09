@@ -28,9 +28,9 @@ def set_seed(seed=3407):
 
 
 def makedirs(path):
+    if not os.path.isdir(path):
+      path = os.path.dirname(path)
     os.makedirs(path, exist_ok=True)
-    return
-
 
 def save_dataset(x, y,file_path):
     torch.save((x, y), file_path)
