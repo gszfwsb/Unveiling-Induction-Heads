@@ -6,7 +6,8 @@ import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader, TensorDataset
 import os
 import sys
-sys.path.append(os.path.abspath('../'))
+import os.path as osp
+sys.path.append(osp.abspath('../'))
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import MarkovDataset, NGramDataset
@@ -18,14 +19,14 @@ from RPE.model import TwoLayerTransformer
 from collections import Counter
 
 
-
 def plot_begin(model, remain_pos, alphas, H, L, n, save_file_path):
     C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
     C_alpha_list = C_alpha_list[remain_pos]
-    bar_path = f"{save_file_path}/phase1/C_alpha/value/init.svg"
+    bar_path = osp.join(save_file_path, 'phase1', 'C_alpha', 'value', 'init.svg')
     draw_bar(C_alpha_list, alphas, bar_path)
     W = model.layer1.W.clone().cpu().detach().numpy()
-    visualize_W(W, H, L, n-1, f"{save_file_path}/phase1", 'init')
+    W_path = osp.join(save_file_path, 'phase1')
+    visualize_W(W, H, L, n-1, W_path, 'init')
 
 
 def generate_train_flags(train_cmd):
@@ -48,10 +49,10 @@ def plot_end(model, train_loss_list, val_loss_list, remain_pos, alphas, H, L, n,
     C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
     C_alpha_list = C_alpha_list[remain_pos]
     W = model.layer1.W.clone().cpu().detach().numpy()
-    visualize_W(W, H, L, n-1, save_file_path, 'end', )
-    bar_path = f"{save_file_path}/phase{phase}/C_alpha/value/end.svg"
+    visualize_W(W, H, L, n-1, save_file_path, 'end')
+    bar_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'value', 'end.svg')
     draw_bar(C_alpha_list, alphas, bar_path)
-    curve_path = f"{save_file_path}/phase{phase}/curve.svg"
+    curve_path = osp.join(save_file_path, f'phase{phase}', 'curve.svg')
     draw_curves(train_loss_list, val_loss_list, curve_path)
 
 def train(model, 
@@ -108,7 +109,7 @@ def train(model,
                 if train_C:
                     C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
                     C_alpha_grad = C_alpha_grad[remain_pos]
-                    bar_path = f"{save_file_path}/phase{phase}/C_alpha/grad/{epoch}.svg"
+                    bar_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'grad', f'{epoch}.svg')
                     draw_bar(C_alpha_grad, alphas, bar_path)
         train_loss_list.append(train_loss / n_train)
         model.eval()
@@ -127,20 +128,21 @@ def train(model,
                 C_alpha_list = C_alpha_list[remain_pos]
                 C_list.append(C_alpha_list)
         if epoch % eval_freq == 0:
-            curve_path = f"{save_file_path}/phase{phase}/curve.svg"
+            curve_path = osp.join(save_file_path, f'phase{phase}', 'curve.svg')
             draw_curves(train_loss_list, val_loss_list, curve_path)
             if train_C:
                 C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
                 C_alpha_list = C_alpha_list[remain_pos]
-                curve_path = f"{save_file_path}/phase{phase}/C_alpha/curve.svg"
+                curve_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'curve.svg')
                 draw_C_alpha_curve(C_list, alphas, curve_path)
-                bar_path = f"{save_file_path}/phase{phase}/C_alpha/value/{epoch}.svg"
+                bar_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'value', f'{epoch}.svg')
                 draw_bar(C_alpha_list, alphas, bar_path)
             if train_W:
                 W = model.layer1.W.clone().cpu().detach().numpy()
-                visualize_W(W, H, L, n-1, f"{save_file_path}/phase{phase}", epoch)
+                W_path = osp.join(save_file_path, f'phase{phase}')
+                visualize_W(W, H, L, n-1, W_path, epoch)
             if train_a:
-                curve_path = f"{save_file_path}/phase{phase}/a/curve.svg"
+                curve_path = osp.join(save_file_path, f'phase{phase}', 'a', 'curve.svg')
                 draw_a_curve(a_list, curve_path)
     return train_loss_list, val_loss_list
 
@@ -199,7 +201,7 @@ def main():
     lr_args = '_'.join(str(_) for _ in lr_list)
     method_args = f'{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
     root_path = './data'
-    save_file_path = f'results_paper/{dataset}/{method_args}'
+    save_file_path = osp.join(f'./results_paper', dataset, method_args)
     makedirs(save_file_path)
     # Generate the TwoLayerCausalTransformer
     if low_degree != -1:
@@ -210,16 +212,19 @@ def main():
 
 
     criterion = population_loss(ignore_idx)
-
-    data_path = f'./data/{dataset}/vocab{S}-seq{L}-alpha{alpha}' if dataset == 'Markov' else f'./data/{dataset}/vocab{S}-seq{L}-n{n}-alpha{alpha}'
+    if dataset == 'Markov':
+        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_alpha{alpha}')
+    else:
+        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_n{n}_alpha{alpha}')
     makedirs(data_path)
-
     n_train, n_val = int(n_sample * 0.9), int(n_sample * 0.1)
 
     # Save the datasets
-    if os.path.exists(f'{data_path}/train_set.pt'):
-        train_dataset = torch.load(f'{data_path}/train_set.pt')
-        val_dataset = torch.load(f'{data_path}/val_set.pt')
+    train_set_path = osp.join(data_path, 'train_set.pt')
+    val_set_path = osp.join(data_path, 'val_set.pt')
+    if osp.exists(train_set_path) and osp.exists(val_set_path):
+        train_dataset = torch.load(train_set_path)
+        val_dataset = torch.load(val_set_path)
     else:
         if dataset == 'Markov':
             dataset = MarkovDataset(S, L, alpha, n_sample)
@@ -227,8 +232,9 @@ def main():
             dataset = NGramDataset(S, L, n, alpha, n_sample)
         # Split into train and validation sets
         train_dataset, val_dataset = torch.utils.data.random_split(dataset, [n_train, n_val])
-        torch.save(train_dataset, f'{data_path}/train_set.pt')
-        torch.save(val_dataset, f'{data_path}/val_set.pt')
+        print(f"save dataset to {data_path}")
+        torch.save(train_dataset, train_set_path)
+        torch.save(val_dataset, val_set_path)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=False)
