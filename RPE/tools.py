@@ -1,15 +1,7 @@
 import os
 import random
-
 import numpy as np
 import torch
-from torch.backends import cudnn
-from typing import Callable, List, Literal, Tuple
-import wandb
-import matplotlib.pyplot as plt
-from PIL import Image
-from matplotlib.colors import LinearSegmentedColormap
-
 
 
 
@@ -28,9 +20,12 @@ def set_seed(seed=3407):
 
 
 def makedirs(path):
-    if not os.path.isdir(path):
-      path = os.path.dirname(path)
-    os.makedirs(path, exist_ok=True)
+    if '.' in os.path.basename(path) and not path.endswith('.'):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # print(f"The directory for {path} has been created.")
+    else:
+        os.makedirs(path, exist_ok=True)
+        # print(f"The directory {path} has been created.")
 
 def save_dataset(x, y,file_path):
     torch.save((x, y), file_path)

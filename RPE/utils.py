@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch
 import wandb
-from PIL import Image
 import torch.nn.functional as F
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib import gridspec
 from tools import makedirs
+import os.path as osp
 
 colors = ["green", "lime", "white", "pink", "deeppink"]  # Corrected color name
 CMAP = LinearSegmentedColormap.from_list("custom_cmap", colors, N=256)
@@ -97,23 +97,24 @@ def create_matrix_W_h(W, H, n, T, h):
 
 
 def visualize_W(W, H, T, n, save_file_path, epoch=-1, sub_size=10):
-    W_path = f"{save_file_path}/W/{epoch}.svg"
-    makedirs(f"{save_file_path}/W")
+    W_path = osp.join(save_file_path, 'W', f'{epoch}.svg')
+    makedirs(W_path)
     W_thres = max(W.max(),abs(W.min()))
     draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
     for h in range(W.shape[1]):
         W_h_raw, W_h = create_matrix_W_h(W[:,h], H, n, T, h)
-        W_h_path = f"{save_file_path}/W_head{h}/raw/{epoch}.svg"
-        W_h_raw_path = f"{save_file_path}/W_head{h}_before/raw/{epoch}.svg"
-        makedirs(f"{save_file_path}/W_head{h}/raw")
-        makedirs(f"{save_file_path}/W_head{h}_before/{sub_size}")
-        makedirs(f"{save_file_path}/W_head{h}/raw")
-        makedirs(f"{save_file_path}/W_head{h}_before/{sub_size}")
+        W_h_path = osp.join(save_file_path, f"W_head{h}", 'raw', f'{epoch}.svg')
+        W_h_raw_path = osp.join(save_file_path, f"W_head{h}_before", 'raw', f'{epoch}.svg')
+        makedirs(W_h_path)
+        makedirs(W_h_raw_path)
         draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
         draw_heatmap(W_h, W_h_raw_path, vmin=W_h_raw.min(), vmax=W_h_raw.max())
+        ######################## draw a submatrix ########################
         W_h_raw, W_h = W_h_raw[:sub_size,:sub_size], W_h[:sub_size,:sub_size]
-        W_h_path = f"{save_file_path}/W_head{h}/{sub_size}/{epoch}.svg"
-        W_h_raw_path = f"{save_file_path}/W_head{h}_before/{sub_size}/{epoch}.svg"
+        W_h_path = osp.join(save_file_path, f"W_head{h}", f'{sub_size}', f'{epoch}.svg')
+        W_h_raw_path = osp.join(save_file_path, f"W_head{h}_before", f'{sub_size}', f'{epoch}.svg')
+        makedirs(W_h_path)
+        makedirs(W_h_raw_path)
         draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
         draw_heatmap(W_h, W_h_raw_path, vmin=W_h_raw.min(), vmax=W_h_raw.max())
 
