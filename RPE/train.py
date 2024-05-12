@@ -183,9 +183,9 @@ def main():
 
     criterion = population_loss(ignore_idx)
     if dataset == 'Markov':
-        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_alpha{alpha}')
+        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_alpha{alpha}_{n_sample}')
     else:
-        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_n{n}_alpha{alpha}')
+        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_n{n}_alpha{alpha}_{n_sample}')
     os.makedirs(data_path, exist_ok=True)
     n_train, n_val = int(n_sample * 0.9), int(n_sample * 0.1)
 
@@ -237,7 +237,7 @@ def main():
                                             eval_freq=eval_freq,
                                         )
 
-    plot_end(model, train_loss_list, val_loss_list,  H, L, n, save_file_path)
+    plot_end(model, train_loss_list, val_loss_list, remain_pos, alphas, H, L, n, save_file_path)
 
 if __name__ == "__main__":
     main()

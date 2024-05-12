@@ -509,6 +509,7 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
         key_new = key.view(batch_size, seq_len, self.num_components, -1)
         query_new = query.view(batch_size, query_len, self.num_components, -1)
         logits_shift = torch.einsum("bqcd,bscd->bqsc", query_new, key_new) # [batch_size, query_len, seq_len, num_components]
+        logits_shift = F.relu(logits_shift) # add here to avoid negative values
         logits_shift = torch.exp(torch.einsum("bqsc,lc->bqsl", torch.log(logits_shift + 1e-24), self.degrees.to(logits_shift.device))) # [batch_size, query_len, seq_len, num_components ** max_individual_degree]
         logits_shift = torch.einsum("bqsl,hl->bhqs", logits_shift, self.C_alpha_list ** 2) # [batch_size, num_heads, query_len, seq_len]
         logits_shift = logits_shift / self.C_alpha_list[:,self.remain_pos].norm(dim=-1, keepdim=True) ** 2
@@ -606,8 +607,13 @@ class RPEAttention(nn.Module):
         self.W = torch.ones((self.T,self.H)) * w_minus
         torch.diagonal(self.W, 0).fill_(w_plus)
         self.W = nn.Parameter(self.W)
-        self.q_k_proj = nn.Parameter(torch.randn(d, d, H)*proj_init)
-        self.o_v_proj = nn.Parameter(torch.randn(d, d, H)*proj_init)
+        self.q_k_proj = torch.zeros(d, d, H)
+        self.q_k_proj[torch.arange(d), torch.arange(d)] = proj_init
+        self.o_v_proj = torch.zeros(d, d, H)
+        self.o_v_proj[torch.arange(d), torch.arange(d)] = proj_init
+        self.q_k_proj = nn.Parameter(self.q_k_proj)
+        self.o_v_proj = nn.Parameter(self.o_v_proj)
+        
         self.norm = nn.LayerNorm(d)
                 
     def forward(self, X):
@@ -626,7 +632,7 @@ class RPEAttention(nn.Module):
             V = torch.cat([V, v_h.clone()], dim=-1)
         V = V.to(X.device) # [bs, (T+1), (H+1)*d]
         return V
-    
+
 class TwoLayerTransformer(nn.Module):
     def __init__(self, 
                 vocab_size,
