@@ -15,45 +15,30 @@ from tools import makedirs, set_seed
 import argparse
 import numpy as np
 from RPE.utils import *
-from RPE.model import SimplifiedTwoLayerTransformer
-from collections import Counter
+from RPE.model import TwoLayerTransformer
+
 
 
 def plot_begin(model, remain_pos, alphas, H, L, n, save_file_path):
     C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
     C_alpha_list = C_alpha_list[remain_pos]
-    bar_path = osp.join(save_file_path, 'phase1', 'C_alpha', 'value', 'init.svg')
+    bar_path = osp.join(save_file_path, 'C_alpha', 'value', 'init.svg')
     draw_bar(C_alpha_list, alphas, bar_path)
     W = model.layer1.W.clone().cpu().detach().numpy()
-    W_path = osp.join(save_file_path, 'phase1')
+    W_path = osp.join(save_file_path)
     visualize_W(W, H, L, n-1, W_path, 'init')
-
-
-def generate_train_flags(train_cmd):
-    train_flags = []
-    for param in train_cmd:
-        flags = [False, False, False]
-        for char in param:
-            if char == 'C':
-                flags[0] = True
-            elif char == 'W':
-                flags[1] = True
-            elif char == 'a':
-                flags[2] = True
-        if flags == [False, False, False]:
-            continue
-        train_flags.append(flags)
-    return train_flags
-
-def plot_end(model, train_loss_list, val_loss_list, remain_pos, alphas, H, L, n, save_file_path, phase=2):
+    
+    
+def plot_end(model, train_loss_list, val_loss_list, remain_pos, alphas, H, L, n, save_file_path):
     C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
     C_alpha_list = C_alpha_list[remain_pos]
     W = model.layer1.W.clone().cpu().detach().numpy()
     visualize_W(W, H, L, n-1, save_file_path, 'end')
-    bar_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'value', 'end.svg')
+    bar_path = osp.join(save_file_path,  'C_alpha', 'value', 'end.svg')
     draw_bar(C_alpha_list, alphas, bar_path)
-    curve_path = osp.join(save_file_path, f'phase{phase}', 'curve.svg')
+    curve_path = osp.join(save_file_path, 'curve.svg')
     draw_curves(train_loss_list, val_loss_list, curve_path)
+
 
 def train(model, 
         train_loader, 
@@ -65,34 +50,30 @@ def train(model,
         H,
         L,
         n,
-        remain_pos,
         criterion, 
-        alphas,
         lr,
-        phase,
         save_file_path,
-        train_C=False, 
-        train_W=False, 
-        train_a=False,
         eval_freq=500,
         ):
+    
+    ########################### begin ###########################
+    degrees = model.layer2.degrees.data.clone().cpu().detach().numpy()
+    remain_pos = np.where(degrees[:, 0]==0)[0]
+    degrees = degrees[remain_pos] # only for those exclude X_tilde
+    alphas =  [''.join(row.astype(int).astype(str)) for row in degrees]
+    C_list = []
+    C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+    C_alpha_list = C_alpha_list[remain_pos]
+    C_list.append(C_alpha_list)
+    a_list = []
+    a_list.append(model.layer2.a.item())
+    ############################################################
+    
     train_loss_list, val_loss_list = [], []
     pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0, weight_decay=0)
+    
 
-    param_groups = []
-    if train_C:
-        param_groups.append({'params': model.layer2.C_alpha_list})
-        C_list = []
-        C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
-        C_alpha_list = C_alpha_list[remain_pos]
-        C_list.append(C_alpha_list)
-    if train_W:
-        param_groups.append({'params': model.layer1.W})
-    if train_a:
-        param_groups.append({'params': model.layer2.a})
-        a_list = []
-        a_list.append(model.layer2.a.item())
-    optimizer = optim.SGD(param_groups, lr=lr, momentum=0, weight_decay=0)
     for epoch in pbar:
         model.train()
         train_loss, eval_loss = 0, 0
@@ -106,11 +87,10 @@ def train(model,
             pbar.set_description(f'Train loss:{loss.item():.10f}')
             train_loss += loss.item()
             if epoch % eval_freq == 0:
-                if train_C:
-                    C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
-                    C_alpha_grad = C_alpha_grad[remain_pos]
-                    bar_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'grad', f'{epoch}.svg')
-                    draw_bar(C_alpha_grad, alphas, bar_path)
+                C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
+                C_alpha_grad = C_alpha_grad[remain_pos]
+                bar_path = osp.join(save_file_path, 'C_alpha', 'grad', f'{epoch}.svg')
+                draw_bar(C_alpha_grad, alphas, bar_path)
         train_loss_list.append(train_loss / n_train)
         model.eval()
         with torch.no_grad():
@@ -121,29 +101,25 @@ def train(model,
                 eval_loss += loss.item()
                 pbar.set_description(f'Val loss:{loss.item():.10f}')
             val_loss_list.append(eval_loss / n_val)
-            if train_a:
-                a_list.append(model.layer2.a.item())
-            if train_C:
-                C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
-                C_alpha_list = C_alpha_list[remain_pos]
-                C_list.append(C_alpha_list)
+            a_list.append(model.layer2.a.item())
+            C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
+            C_alpha_list = C_alpha_list[remain_pos]
+            C_list.append(C_alpha_list)
+            
         if epoch % eval_freq == 0:
-            curve_path = osp.join(save_file_path, f'phase{phase}', 'curve.svg')
+            curve_path = osp.join(save_file_path, 'curve.svg')
             draw_curves(train_loss_list, val_loss_list, curve_path)
-            if train_C:
-                C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
-                C_alpha_list = C_alpha_list[remain_pos]
-                curve_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'curve.svg')
-                draw_C_alpha_curve(C_list, alphas, curve_path)
-                bar_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'value', f'{epoch}.svg')
-                draw_bar(C_alpha_list, alphas, bar_path)
-            if train_W:
-                W = model.layer1.W.clone().cpu().detach().numpy()
-                W_path = osp.join(save_file_path, f'phase{phase}')
-                visualize_W(W, H, L, n-1, W_path, epoch)
-            if train_a:
-                curve_path = osp.join(save_file_path, f'phase{phase}', 'a', 'curve.svg')
-                draw_a_curve(a_list, curve_path)
+            C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+            C_alpha_list = C_alpha_list[remain_pos]
+            curve_path = osp.join(save_file_path, 'C_alpha', 'curve.svg')
+            draw_C_alpha_curve(C_list, alphas, curve_path)
+            bar_path = osp.join(save_file_path, 'C_alpha', 'value', f'{epoch}.svg')
+            draw_bar(C_alpha_list, alphas, bar_path)
+            W = model.layer1.W.clone().cpu().detach().numpy()
+            W_path = osp.join(save_file_path)
+            visualize_W(W, H, L, n-1, W_path, epoch)
+            curve_path = osp.join(save_file_path, 'a', 'curve.svg')
+            draw_a_curve(a_list, curve_path)
     return train_loss_list, val_loss_list
 
 def main():
@@ -151,7 +127,7 @@ def main():
     parser.add_argument('--vocab-size',type=int,default=3)
     parser.add_argument('--seq-length',type=int, default=100)
     parser.add_argument('--n-heads',type=int, default=3)
-    parser.add_argument('--lr', action='append', type=float)
+    parser.add_argument('--lr', default=1, type=float)
     parser.add_argument('--batch-size',type=int, default=100000)
     parser.add_argument('--seed',type=int, default=2024)
     parser.add_argument('--n-sample',type=int,default=10000)
@@ -161,12 +137,11 @@ def main():
     parser.add_argument('--w-minus',type=float,default=0.01)
     parser.add_argument('--optim',type=str,default='sgd')
     parser.add_argument('--a',type=float,default=0.01)
-    parser.add_argument('--c-alpha',type=float,default=1)
+    parser.add_argument('--c-alpha',type=float,default=0.01)
     parser.add_argument('--alpha',type=float,default=0.1)
     parser.add_argument('--n-epochs',type=int,default=10000)
     parser.add_argument('--n-gram',type=int,default=3)
     parser.add_argument('--low-degree',type=int,default=-1)
-    parser.add_argument('--train-cmd', action='append', type=str)
 
 
     args = parser.parse_args()
@@ -181,7 +156,7 @@ def main():
     # training setting
     bs = args.batch_size
     n_sample = args.n_sample
-    lr_list = args.lr
+    lr = args.lr
     dataset = args.dataset
     optim_method = args.optim
     n_epochs = args.n_epochs
@@ -192,22 +167,17 @@ def main():
     w_plus = args.w_plus
     w_minus = args.w_minus
     low_degree = args.low_degree
-    train_cmd = args.train_cmd
+    # d_mlp = args.d_mlp
     # Define the file paths
-    assert len(lr_list) == len(train_cmd)
-    char_count = Counter(''.join(train_cmd))
-    assert char_count['C'] == 1 and char_count['W'] == 1 and char_count['a'] == 1
-    cmd_args = '_'.join([''.join(sorted(s)) for s in train_cmd])
-    lr_args = '_'.join(str(_) for _ in lr_list)
-    method_args = f'{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
+    method_args = f'Full_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}__alpha{alpha}_n-epochs{n_epochs}'
     root_path = './data'
     save_file_path = osp.join(f'./results_paper', dataset, method_args)
     os.makedirs(save_file_path, exist_ok=True)
     # Generate the TwoLayerCausalTransformer
     if low_degree != -1:
-        model = SimplifiedTwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree)
+        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree, proj_init=0.001)
     else:
-        model = SimplifiedTwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1)
+        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, proj_init=0.001)
     model.to(device)
 
 
@@ -242,47 +212,32 @@ def main():
     eval_freq = min(n_epochs//10, 500)
 
 
+
     degrees = model.layer2.degrees.data.clone().cpu().detach().numpy()
     remain_pos = np.where(degrees[:, 0]==0)[0]
     degrees = degrees[remain_pos] # only for those exclude X_tilde
     alphas =  [''.join(row.astype(int).astype(str)) for row in degrees]
-    print(alphas)
-
-
-
 
     plot_begin(model, remain_pos, alphas, H, L, n, save_file_path)
 
 
-    train_flags = generate_train_flags(train_cmd)
+    train_loss_list, val_loss_list  = train(model, 
+                                            train_loader, 
+                                            val_loader, 
+                                            n_train, 
+                                            n_val,
+                                            n_epochs,
+                                            device,
+                                            H,
+                                            L,
+                                            n,
+                                            criterion, 
+                                            lr,
+                                            save_file_path,
+                                            eval_freq=eval_freq,
+                                        )
 
-    print(train_flags)
-
-    for phase, train_flag in enumerate(train_flags):
-        train_C, train_W, train_a = train_flag[0], train_flag[1], train_flag[2]
-        train_loss_list, val_loss_list  = train(model, 
-                                                train_loader, 
-                                                val_loader, 
-                                                n_train, 
-                                                n_val,
-                                                n_epochs,
-                                                device,
-                                                H,
-                                                L,
-                                                n,
-                                                remain_pos,
-                                                criterion, 
-                                                alphas,
-                                                lr_list[phase],
-                                                phase+1,
-                                                save_file_path,
-                                                train_C=train_C, 
-                                                train_W=train_W, 
-                                                train_a=train_a,
-                                                eval_freq=eval_freq,
-                                            )
-
-    plot_end(model, train_loss_list, val_loss_list, remain_pos, alphas, H, L, n, save_file_path, phase=len(lr_list))
+    plot_end(model, train_loss_list, val_loss_list,  H, L, n, save_file_path)
 
 if __name__ == "__main__":
     main()

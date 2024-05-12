@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import itertools
 import math
 from typing import Optional, Union, Literal
+import torch.nn.init as init
 
 class MultiIdentity(nn.Module):
     """A module that applies multiple identity operations."""
@@ -21,8 +22,6 @@ class MultiIdentity(nn.Module):
     def forward(self, x):
         return x.repeat(-1, self.num_copies)
     
-
-
 class MultiHeadAttention(nn.Module):
     """
     Implementation of multi-head self/cross attention.
@@ -423,70 +422,6 @@ class MultiHeadAttention(nn.Module):
             "o_proj_weights": o_proj_weights
         }
 
-
-
-class SimplifiedLayerNorm(nn.Module):
-    def __init__(self, dim=-1, eps=1e-7):
-        super(SimplifiedLayerNorm, self).__init__()
-        self.dim = dim
-        self.eps = eps
-    def forward(self, x):
-        norm = torch.norm(x, dim=self.dim, keepdim=True)
-        out = x / (norm + self.eps)
-        return out
-
-class SimplifiedRelativePositionalEmbedding(nn.Module):
-    def __init__(self, T, n_parent, H, w_plus, w_minus):
-        super(SimplifiedRelativePositionalEmbedding, self).__init__()
-        self.T = T
-        self.H = H
-        self.W = torch.ones((self.T,self.H)) * w_minus
-        torch.diagonal(self.W, 0).fill_(w_plus)
-        self.W = nn.Parameter(self.W)
-        self.norm = SimplifiedLayerNorm(dim=-1)
-    def forward(self, X):
-        X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2)
-        V = X_tilde.clone()
-        for h in range(self.H):
-            W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
-            for j in range(self.H):
-                torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
-            W_h = F.softmax(W_h, dim=-1)
-            W_h = torch.nan_to_num(W_h, nan=0.0)  # Safely convert NaNs to zero after softmax
-            v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
-            v_h = self.norm(v_h)
-            V = torch.cat([V, v_h.clone()], dim=-1)
-        V = V.to(X.device)
-        return V
-
-
-
-class RelativePositionalEmbedding(nn.Module):
-    def __init__(self, T, n_parent, H, w_plus, w_minus):
-        super(RelativePositionalEmbedding, self).__init__()
-        self.T = T
-        self.H = H
-        self.W = torch.ones((self.T,self.H)) * w_minus
-        torch.diagonal(self.W, 0).fill_(w_plus)
-        self.W = nn.Parameter(self.W)
-        self.norm = nn.LayerNorm(dim=-1)
-    def forward(self, X):
-        X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2)
-        V = X_tilde.clone()
-        for h in range(self.H):
-            W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
-            for j in range(self.H):
-                torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
-            W_h = F.softmax(W_h, dim=-1)
-            W_h = torch.nan_to_num(W_h, nan=0.0)  # Safely convert NaNs to zero after softmax
-            v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
-            v_h = self.norm(v_h)
-            V = torch.cat([V, v_h.clone()], dim=-1)
-        V = V.to(X.device)
-        return V
-
-
-
 class PolyKernelMultiHeadAttention(MultiHeadAttention):
     def __init__(self, 
                  num_heads: int,
@@ -578,12 +513,44 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
         logits_shift = torch.einsum("bqsl,hl->bhqs", logits_shift, self.C_alpha_list ** 2) # [batch_size, num_heads, query_len, seq_len]
         logits_shift = logits_shift / self.C_alpha_list[:,self.remain_pos].norm(dim=-1, keepdim=True) ** 2
         # layer normalization
-        
         o, _ = super().forward(query, torch.zeros_like(key, device=key.device), value, logits_shift=logits_shift * self.a)
         return o.squeeze(1)
-  
 
-class TwoLayerTransformer(nn.Module):
+class SimplifiedLayerNorm(nn.Module):
+    def __init__(self, dim=-1, eps=1e-7):
+        super(SimplifiedLayerNorm, self).__init__()
+        self.dim = dim
+        self.eps = eps
+    def forward(self, x):
+        norm = torch.norm(x, dim=self.dim, keepdim=True)
+        out = x / (norm + self.eps)
+        return out
+
+class SimplifiedRPEAttention(nn.Module):
+    def __init__(self, T, n_parent, H, w_plus, w_minus):
+        super(SimplifiedRPEAttention, self).__init__()
+        self.T = T
+        self.H = H
+        self.W = torch.ones((self.T,self.H)) * w_minus
+        torch.diagonal(self.W, 0).fill_(w_plus)
+        self.W = nn.Parameter(self.W)
+        self.norm = SimplifiedLayerNorm(dim=-1)
+    def forward(self, X):
+        X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2)
+        V = X_tilde.clone()
+        for h in range(self.H):
+            W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
+            for j in range(self.H):
+                torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
+            W_h = F.softmax(W_h, dim=-1)
+            W_h = torch.nan_to_num(W_h, nan=0.0)  # Safely convert NaNs to zero after softmax
+            v_h = torch.matmul(W_h, X_tilde) # [T+1, T+1], [bs, T+1, d] -> [bs, T+1, d]
+            v_h = self.norm(v_h)
+            V = torch.cat([V, v_h.clone()], dim=-1)
+        V = V.to(X.device)
+        return V
+
+class SimplifiedTwoLayerTransformer(nn.Module):
     def __init__(self, 
                 vocab_size,
                 seq_length,
@@ -594,13 +561,13 @@ class TwoLayerTransformer(nn.Module):
                 c_alpha_init,
                 n_parent,
                 low_degree=-1):
-        super(TwoLayerTransformer, self).__init__()
+        super(SimplifiedTwoLayerTransformer, self).__init__()
         self.T = seq_length
         self.H = num_heads
         self.d = vocab_size
         self.n_parent = n_parent
         # layer 1: attention
-        self.layer1 = SimplifiedRelativePositionalEmbedding(
+        self.layer1 = SimplifiedRPEAttention(
             T=self.T, 
             n_parent=self.n_parent,
             H=self.H, 
@@ -628,7 +595,87 @@ class TwoLayerTransformer(nn.Module):
         q, k, v = X[..., -1:, :], X[..., :-1, :], X[..., :-1, 0:self.d]
         X = self.layer2(q,k,v)
         return X
-  
+
+
+class RPEAttention(nn.Module):
+    def __init__(self, d, T, n_parent, H, w_plus, w_minus, proj_init=0.001):
+        super(RPEAttention, self).__init__()
+        self.d = d
+        self.T = T
+        self.H = H
+        self.W = torch.ones((self.T,self.H)) * w_minus
+        torch.diagonal(self.W, 0).fill_(w_plus)
+        self.W = nn.Parameter(self.W)
+        self.q_k_proj = nn.Parameter(torch.randn(d, d, H)*proj_init)
+        self.o_v_proj = nn.Parameter(torch.randn(d, d, H)*proj_init)
+        self.norm = nn.LayerNorm(d)
+                
+    def forward(self, X):
+        # X: [bs, T, d]
+        X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2) # [bs, T+1, d]
+        V = X_tilde.clone()
+        for h in range(self.H):
+            W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
+            for j in range(self.H):
+                torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
+            attn1 = torch.matmul(torch.matmul(X_tilde, self.q_k_proj[:,:,h]), X_tilde.permute(0,2,1)) + W_h # [T+1, d] [d, d] [d, T+1] + [T+1, T+1] -> [T+1, T+1]
+            attn1 = F.softmax(attn1, dim=-1) # [T+1, T+1]
+            attn1 = torch.nan_to_num(attn1, nan=0.0)  # Safely convert NaNs to zero after softmax
+            v_h = torch.matmul(torch.matmul(attn1, X_tilde), self.o_v_proj[:,:,h]) # [T+1, T+1] [bs, T+1, d] [d,d]-> [bs, T+1, d]
+            v_h = self.norm(v_h)
+            V = torch.cat([V, v_h.clone()], dim=-1)
+        V = V.to(X.device) # [bs, (T+1), (H+1)*d]
+        return V
+    
+class TwoLayerTransformer(nn.Module):
+    def __init__(self, 
+                vocab_size,
+                seq_length,
+                num_heads,
+                w_plus,
+                w_minus,
+                a_init,
+                c_alpha_init,
+                n_parent,
+                low_degree=-1,
+                proj_init=0.001):
+        super(TwoLayerTransformer, self).__init__()
+        self.T = seq_length
+        self.H = num_heads
+        self.d = vocab_size
+        self.n_parent = n_parent
+        # layer 1: attention
+        self.layer1 = RPEAttention(
+            d=self.d,
+            T=self.T, 
+            n_parent=self.n_parent,
+            H=self.H, 
+            w_plus=w_plus, 
+            w_minus=w_minus,
+            proj_init=proj_init
+        )
+        # layer 2: attention
+        self.layer2 = PolyKernelMultiHeadAttention(
+            num_heads=1,
+            num_components=self.H+1,
+            dimension=self.d,
+            max_individual_degree=1,
+            init_method="ones",
+            a = "learnable",
+            a_init = a_init,
+            low_degree = low_degree
+        )
+        # init params
+        self.layer2.C_alpha_list.data = torch.ones_like(self.layer2.C_alpha_list.data) * c_alpha_init
+
+    def forward(self, X):
+        X = self.layer1(X) # [bs, T+1, d*(H+1)]
+        assert not torch.isnan(X).all()
+        assert X.shape[1] == self.T+1 and X.shape[2] == self.d * (1+self.H)
+        X = X.view(X.shape[0], X.shape[1], -1)
+        q, k, v = X[..., -1:, :], X[..., :-1, :], X[..., :-1, 0:self.d]
+        X = self.layer2(q,k,v)
+        return X
 
 def population_loss(ignore_idx):
     criterion = nn.CrossEntropyLoss(ignore_index=ignore_idx)
