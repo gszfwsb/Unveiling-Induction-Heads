@@ -8,7 +8,8 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib import gridspec
 from tools import makedirs
 import os.path as osp
-
+import matplotlib.colors as mcolors
+import os
 colors = ["green", "lime", "white", "pink", "deeppink"]  # Corrected color name
 CMAP = LinearSegmentedColormap.from_list("custom_cmap", colors, N=256)
 
@@ -18,25 +19,77 @@ def population_loss(ignore_idx):
 
 
 
+# def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5, init=False):
+#     # Create a heatmap using matplotlib and your desired colormap
+#     makedirs(heatmap_path)
+    # if len(data.shape) == 1:
+    #     data = data.reshape(-1, 1)
+    # # Create a figure with a gridspec that defines a 1x2 grid
+    # fig = plt.figure(figsize=(5.2, 5))  # Adjusted figure size for better control
+    # gs = gridspec.GridSpec(1, 2, width_ratios=[5, 0.2], wspace=0.05)  # wspace controls the space between the image and colorbar
+
+    # # Add an image plot to the first cell of the gridspec
+    # ax1 = fig.add_subplot(gs[0])
+    # img = ax1.imshow(data, cmap=CMAP, vmin=vmin, vmax=vmax, aspect='equal')  # Use aspect='auto' to adjust the aspect ratio
+    # # Add a colorbar to the second cell of the gridspec
+    # ax2 = fig.add_subplot(gs[1])
+    # plt.colorbar(img, cax=ax2)
+    # # plt.tight_layout()
+    # # Save the heatmap to a file
+    # plt.savefig(heatmap_path)
+    # # Close plt figure to free memory
+
+def create_colormap(base_color):
+    """ Create a linear colormap from white to the base color """
+    cdict = {
+        'red':   ((0.0, 1.0, 1.0), (1.0, base_color[0], base_color[0])),
+        'green': ((0.0, 1.0, 1.0), (1.0, base_color[1], base_color[1])),
+        'blue':  ((0.0, 1.0, 1.0), (1.0, base_color[2], base_color[2]))
+    }
+    return mcolors.LinearSegmentedColormap('CustomMap', cdict)
+
 def draw_heatmap(data, heatmap_path, vmin=-.5, vmax=.5):
-    # Create a heatmap using matplotlib and your desired colormap
-    makedirs(heatmap_path)
-    if len(data.shape) == 1:
-        data = data.reshape(-1, 1)
-    # Create a figure with a gridspec that defines a 1x2 grid
-    fig = plt.figure(figsize=(5.2, 5))  # Adjusted figure size for better control
-    gs = gridspec.GridSpec(1, 2, width_ratios=[5, 0.2], wspace=0.05)  # wspace controls the space between the image and colorbar
-
-    # Add an image plot to the first cell of the gridspec
-    ax1 = fig.add_subplot(gs[0])
-    img = ax1.imshow(data, cmap=CMAP, vmin=vmin, vmax=vmax)  # Use a default colormap here
-
-    # Add a colorbar to the second cell of the gridspec
-    ax2 = fig.add_subplot(gs[1])
-    plt.colorbar(img, cax=ax2)
-    # plt.tight_layout()
+    # Ensure the output directory exists    
+    os.makedirs(os.path.dirname(heatmap_path), exist_ok=True)
+    
+    # Create a figure
+    fig, ax = plt.subplots(figsize=(5.2, 5))  # Adjusted figure size for better control
+    
+    # Plot each row with a different color
+    num_rows = data.shape[0]
+    num_cols = data.shape[1]
+    vmin = np.min(data)
+    vmax = np.max(data)
+    # Use the tab20 colormap to get distinct colors for each diagonal
+    # base_colormap = plt.cm.get_cmap('tab20', num_rows - 1)
+    base_colormap =  ['#8dd3c7','#ffffb3','#bebada','#fb8072','#80b1d3','#fdb462','#b3de69','#fccde5','#d9d9d9','#bc80bd']
+    for i in range(num_rows):
+        for j in range(num_cols):
+            if data[i, j] == -np.inf:
+                continue
+            if data[i, j] != 0:
+                # Each diagonal will have its unique color
+                diagonal_index = i - j
+                color_index = (diagonal_index - 1)
+                color = base_colormap[color_index]  # Get RGB values of the base color
+                normalized_value =(data[i, j] - vmin) / (vmax - vmin)  # Normalize the value to [0, 1]
+                ax.add_patch(plt.Rectangle((j, i), 1, 1, color=color, edgecolor='none'))
+            else:
+                ax.add_patch(plt.Rectangle((j, i), 1, 1, color='white', edgecolor='none'))
+    
+    
+    # Set limits, ticks, and aspect ratio
+    ax.set_xlim(0, num_cols)
+    ax.set_ylim(0, num_rows)
+    ax.set_xticks(np.arange(0.5, num_cols, 1))
+    ax.set_yticks(np.arange(0.5, num_rows, 1))
+    ax.set_xticklabels(np.arange(0, num_cols, 1))
+    ax.set_yticklabels(np.arange(0, num_rows, 1))
+    ax.invert_yaxis()  # Invert y-axis to have the first row at the top
+    ax.set_aspect('equal')
+    
     # Save the heatmap to a file
-    plt.savefig(heatmap_path)
+    plt.savefig(heatmap_path, bbox_inches='tight')
     # Close plt figure to free memory
     plt.close()
 
@@ -97,18 +150,23 @@ def create_matrix_W_h(W, H, n, T, h):
 
 
 def visualize_W(W, H, T, n, save_file_path, epoch=-1, sub_size=10):
-    W_path = osp.join(save_file_path, 'W', f'{epoch}.svg')
-    makedirs(W_path)
-    W_thres = max(W.max(),abs(W.min()))
-    draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres)
+    # W_path = osp.join(save_file_path, 'W', f'{epoch}.svg')
+    # makedirs(W_path)
+    # W_thres = max(W.max(),abs(W.min()))
+    # draw_heatmap(W, W_path, vmin=-W_thres,vmax=W_thres,init=True)
+    W_sub = W[:sub_size,:sub_size]
+    W_path = osp.join(save_file_path, f'W_{sub_size}', f'{epoch}.svg')
+    W_thres = max(W_sub.max(),abs(W_sub.min()))
+    draw_heatmap(W_sub, W_path, vmin=-W_thres,vmax=W_thres)
+
     for h in range(W.shape[1]):
         W_h_raw, W_h = create_matrix_W_h(W[:,h], H, n, T, h)
-        W_h_path = osp.join(save_file_path, f"W_head{h}", 'raw', f'{epoch}.svg')
-        W_h_raw_path = osp.join(save_file_path, f"W_head{h}_before", 'raw', f'{epoch}.svg')
-        makedirs(W_h_path)
-        makedirs(W_h_raw_path)
-        draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
-        draw_heatmap(W_h, W_h_raw_path, vmin=W_h_raw.min(), vmax=W_h_raw.max())
+        # W_h_path = osp.join(save_file_path, f"W_head{h}", 'raw', f'{epoch}.svg')
+        # W_h_raw_path = osp.join(save_file_path, f"W_head{h}_before", 'raw', f'{epoch}.svg')
+        # makedirs(W_h_path)
+        # makedirs(W_h_raw_path)
+        # draw_heatmap(W_h, W_h_path, vmin=0, vmax=W_h.max())
+        # draw_heatmap(W_h, W_h_raw_path, vmin=W_h_raw.min(), vmax=W_h_raw.max())
         ######################## draw a submatrix ########################
         W_h_raw, W_h = W_h_raw[:sub_size,:sub_size], W_h[:sub_size,:sub_size]
         W_h_path = osp.join(save_file_path, f"W_head{h}", f'{sub_size}', f'{epoch}.svg')
@@ -121,7 +179,7 @@ def visualize_W(W, H, T, n, save_file_path, epoch=-1, sub_size=10):
 def draw_C_alpha_curve(C_alpha_list, x_label, curve_path):
     makedirs(curve_path)
     scale = len(x_label) / 12
-    plt.figure(figsize=(15*scale, 6*scale))
+    plt.figure(figsize=(8,6))
     plt.subplot(121)
     C_alpha_list = np.array(C_alpha_list)
     for h in range(len(C_alpha_list[0])):
@@ -140,11 +198,19 @@ def draw_C_alpha_curve(C_alpha_list, x_label, curve_path):
 def draw_bar(data, x_label, bar_path):
     makedirs(bar_path)
     scale = len(x_label) / 12
-    _, ax = plt.subplots(figsize=(10*scale, 6*scale))
+    _, ax = plt.subplots(figsize=(8, 6))
     # Plot the bar of C_alpha
     ax.bar(x_label, data)
-    ax.set_xlabel('Index')
-    ax.set_ylabel('Value')
+    # Find the index of the maximum value in data
+    first_index = 0
+    max_index = np.argmax(data)
+    last_index = len(x_label) - 1
+    
+    # Set the x-ticks to the first, maximum, and last labels
+    xticks = [first_index, (max_index)//2, max_index, last_index]
+    xtick_labels = [x_label[first_index],  '...', x_label[max_index], x_label[last_index]]
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(xtick_labels, rotation=45)
     plt.tight_layout()
     plt.savefig(bar_path)
     plt.close('all')

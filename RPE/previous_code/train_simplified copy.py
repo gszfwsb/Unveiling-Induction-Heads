@@ -35,23 +35,6 @@ def generate_train_flags(train_cmd):
         train_flags.append(flags)
     return train_flags
 
-
-
-def save_params(file_path, params_dict):
-    np.savez(file_path, **params_dict)
-
-
-def combine_and_save_results(file_path, results):
-    combined_results = {}
-    for result in results:
-        for key, value in result.items():
-            if key not in combined_results:
-                combined_results[key] = []
-            combined_results[key].extend(value if isinstance(value, list) else [value])
-    
-    save_params(file_path, combined_results)
-
-
 def train(model, 
         train_loader, 
         val_loader, 
@@ -59,41 +42,37 @@ def train(model,
         n_val,
         n_epochs,
         device,
+        H,
+        L,
+        n,
         remain_pos,
         criterion, 
+        alphas,
         lr,
         phase,
+        save_file_path,
         train_C=False, 
         train_W=False, 
         train_a=False,
+        eval_freq=500,
         ):
     train_loss_list, val_loss_list = [], []
     pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
 
     param_groups = []
-    phase_results = {}
-
     if train_C:
         param_groups.append({'params': model.layer2.C_alpha_list})
         C_list = []
         C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
         C_alpha_list = C_alpha_list[remain_pos]
         C_list.append(C_alpha_list)
-        phase_results['C_list'] = C_list
-
     if train_W:
         param_groups.append({'params': model.layer1.W})
-        W_before = model.layer1.W.clone().cpu().detach().numpy()
-        phase_results['W_before'] = W_before
-
     if train_a:
         param_groups.append({'params': model.layer2.a})
         a_list = []
         a_list.append(model.layer2.a.item())
-        phase_results['a_list'] = a_list
-
     optimizer = optim.SGD(param_groups, lr=lr, momentum=0, weight_decay=0)
-
     for epoch in pbar:
         model.train()
         train_loss, eval_loss = 0, 0
@@ -106,6 +85,12 @@ def train(model,
             optimizer.step()
             pbar.set_description(f'Train loss:{loss.item():.10f}')
             train_loss += loss.item()
+            # if epoch % eval_freq == 0:
+            #     if train_C:
+            #         C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
+            #         C_alpha_grad = C_alpha_grad[remain_pos]
+            #         bar_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'grad', f'{epoch}.svg')
+            #         draw_bar(C_alpha_grad, alphas, bar_path)
         train_loss_list.append(train_loss / n_train)
         model.eval()
         with torch.no_grad():
@@ -116,22 +101,30 @@ def train(model,
                 eval_loss += loss.item()
                 pbar.set_description(f'Val loss:{loss.item():.10f}')
             val_loss_list.append(eval_loss / n_val)
-
             if train_a:
                 a_list.append(model.layer2.a.item())
             if train_C:
                 C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
                 C_alpha_list = C_alpha_list[remain_pos]
                 C_list.append(C_alpha_list)
-
-    phase_results[f'train_loss_list_{phase}'] = train_loss_list
-    phase_results[f'val_loss_list_{phase}'] = val_loss_list
-
-    if train_W:
-        W_after = model.layer1.W.clone().cpu().detach().numpy()
-        phase_results['W_after'] = W_after
-
-    return phase_results
+        # if epoch % eval_freq == 0:
+        #     curve_path = osp.join(save_file_path, f'phase{phase}', 'curve.svg')
+        #     draw_curves(train_loss_list, val_loss_list, curve_path)
+        #     if train_C:
+        #         C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
+        #         C_alpha_list = C_alpha_list[remain_pos]
+        #         curve_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'curve.svg')
+        #         draw_C_alpha_curve(C_list, alphas, curve_path)
+        #         bar_path = osp.join(save_file_path, f'phase{phase}', 'C_alpha', 'value', f'{epoch}.svg')
+        #         draw_bar(C_alpha_list, alphas, bar_path)
+        #     if train_W:
+        #         W = model.layer1.W.clone().cpu().detach().numpy()
+        #         W_path = osp.join(save_file_path, f'phase{phase}')
+        #         visualize_W(W, H, L, n-1, W_path, epoch)
+        #     if train_a:
+        #         curve_path = osp.join(save_file_path, f'phase{phase}', 'a', 'curve.svg')
+        #         draw_a_curve(a_list, curve_path)
+    return train_loss_list, val_loss_list
 
 def main():
     parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
@@ -150,9 +143,9 @@ def main():
     parser.add_argument('--a',type=float,default=0.01)
     parser.add_argument('--c-alpha',type=float,default=1)
     parser.add_argument('--alpha',type=float,default=0.1)
-    parser.add_argument('--n-epochs',type=int,action='append')
+    parser.add_argument('--n-epochs',type=int,default=10000)
     parser.add_argument('--n-gram',type=int,default=3)
-    parser.add_argument('--low-degree',type=int,default=3)
+    parser.add_argument('--low-degree',type=int,default=-1)
     parser.add_argument('--train-cmd', action='append', type=str)
 
 
@@ -182,7 +175,6 @@ def main():
     train_cmd = args.train_cmd
     # Define the file paths
     assert len(lr_list) == len(train_cmd)
-    assert len(train_cmd) == len(n_epochs)
     char_count = Counter(''.join(train_cmd))
     assert char_count['C'] == 1 and char_count['W'] == 1 and char_count['a'] == 1
     cmd_args = '_'.join([''.join(sorted(s)) for s in train_cmd])
@@ -227,6 +219,7 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=False)
 
+    eval_freq = min(n_epochs//10, 500)
 
 
     degrees = model.layer2.degrees.data.clone().cpu().detach().numpy()
@@ -238,34 +231,38 @@ def main():
 
 
 
+    plot_begin(model, remain_pos, alphas, H, L, n, save_file_path)
 
 
     train_flags = generate_train_flags(train_cmd)
 
     print(train_flags)
-    results = []
+
     for phase, train_flag in enumerate(train_flags):
         train_C, train_W, train_a = train_flag[0], train_flag[1], train_flag[2]
-        phase_results = train(model, 
-                            train_loader, 
-                            val_loader, 
-                            n_train, 
-                            n_val,
-                            n_epochs[phase],
-                            device,
-                            remain_pos,
-                            criterion, 
-                            lr_list[phase],
-                            phase+1,
-                            train_C=train_C, 
-                            train_W=train_W, 
-                            train_a=train_a,
-                        )
-        results.append(phase_results)
-        print(phase_results.keys())
-        
+        train_loss_list, val_loss_list  = train(model, 
+                                                train_loader, 
+                                                val_loader, 
+                                                n_train, 
+                                                n_val,
+                                                n_epochs,
+                                                device,
+                                                H,
+                                                L,
+                                                n,
+                                                remain_pos,
+                                                criterion, 
+                                                alphas,
+                                                lr_list[phase],
+                                                phase+1,
+                                                save_file_path,
+                                                train_C=train_C, 
+                                                train_W=train_W, 
+                                                train_a=train_a,
+                                                eval_freq=eval_freq,
+                                            )
 
-    combine_and_save_results(save_file_path, results)
+    plot_end(model, train_loss_list, val_loss_list, remain_pos, alphas, H, L, n, save_file_path, phase=len(lr_list))
 
 if __name__ == "__main__":
     main()
