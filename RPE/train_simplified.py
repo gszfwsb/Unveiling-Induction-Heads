@@ -15,7 +15,7 @@ from tools import makedirs, set_seed
 import argparse
 import numpy as np
 from RPE.utils import *
-from RPE.model import TwoLayerTransformer
+from RPE.model import SimplifiedTwoLayerTransformer
 from collections import Counter
 
 
@@ -190,12 +190,12 @@ def main():
     method_args = f'{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
     root_path = './data'
     save_file_path = osp.join(f'./results_paper', dataset, method_args)
-    makedirs(save_file_path)
+    os.makedirs(save_file_path, exist_ok=True)
     # Generate the TwoLayerCausalTransformer
     if low_degree != -1:
-        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree)
+        model = SimplifiedTwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree)
     else:
-        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1)
+        model = SimplifiedTwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1)
     model.to(device)
 
 
@@ -204,7 +204,7 @@ def main():
         data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_alpha{alpha}')
     else:
         data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_n{n}_alpha{alpha}')
-    makedirs(data_path)
+    os.makedirs(data_path, exist_ok=True)
     n_train, n_val = int(n_sample * 0.9), int(n_sample * 0.1)
 
     # Save the datasets
