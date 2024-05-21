@@ -189,7 +189,7 @@ def main():
     lr_args = '_'.join(str(_) for _ in lr_list)
     method_args = f'{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
     root_path = './data'
-    save_file_path = osp.join(f'./results_paper', dataset, method_args)
+    save_file_path = osp.join(f'./results_paper', dataset)
     os.makedirs(save_file_path, exist_ok=True)
     # Generate the TwoLayerCausalTransformer
     if low_degree != -1:
