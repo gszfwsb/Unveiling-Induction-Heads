@@ -19,25 +19,6 @@ from RPE.model import TwoLayerTransformer
 
 
 
-def plot_begin(model, remain_pos, alphas, H, L, n, save_file_path):
-    C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
-    C_alpha_list = C_alpha_list[remain_pos]
-    bar_path = osp.join(save_file_path, 'C_alpha', 'value', 'init.svg')
-    draw_bar(C_alpha_list, alphas, bar_path)
-    W = model.layer1.W.clone().cpu().detach().numpy()
-    W_path = osp.join(save_file_path)
-    visualize_W(W, H, L, n-1, W_path, 'init')
-    
-    
-def plot_end(model, train_loss_list, val_loss_list, remain_pos, alphas, H, L, n, save_file_path):
-    C_alpha_list = model.layer2.C_alpha_list.clone().cpu().detach().numpy()[0]
-    C_alpha_list = C_alpha_list[remain_pos]
-    W = model.layer1.W.clone().cpu().detach().numpy()
-    visualize_W(W, H, L, n-1, save_file_path, 'end')
-    bar_path = osp.join(save_file_path,  'C_alpha', 'value', 'end.svg')
-    draw_bar(C_alpha_list, alphas, bar_path)
-    curve_path = osp.join(save_file_path, 'curve.svg')
-    draw_curves(train_loss_list, val_loss_list, curve_path)
 
 
 def train(model, 
@@ -68,7 +49,11 @@ def train(model,
     a_list = []
     a_list.append(model.layer2.a.item())
     ############################################################
-    
+    phase_results = {}
+    phase_results["C_list"] = C_list
+    phase_results["a_list"] = a_list
+    W_before = model.layer1.W.clone().cpu().detach().numpy()
+    phase_results["W_before"] = W_before
     train_loss_list, val_loss_list = [], []
     pbar = tqdm(range(n_epochs),ncols=100,mininterval=1)
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0, weight_decay=0)
@@ -86,11 +71,6 @@ def train(model,
             optimizer.step()
             pbar.set_description(f'Train loss:{loss.item():.10f}')
             train_loss += loss.item()
-            if epoch % eval_freq == 0:
-                C_alpha_grad = model.layer2.C_alpha_list.grad.data.clone().detach().cpu().numpy()[0]
-                C_alpha_grad = C_alpha_grad[remain_pos]
-                bar_path = osp.join(save_file_path, 'C_alpha', 'grad', f'{epoch}.svg')
-                draw_bar(C_alpha_grad, alphas, bar_path)
         train_loss_list.append(train_loss / n_train)
         model.eval()
         with torch.no_grad():
@@ -106,20 +86,6 @@ def train(model,
             C_alpha_list = C_alpha_list[remain_pos]
             C_list.append(C_alpha_list)
             
-        if epoch % eval_freq == 0:
-            curve_path = osp.join(save_file_path, 'curve.svg')
-            draw_curves(train_loss_list, val_loss_list, curve_path)
-            C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
-            C_alpha_list = C_alpha_list[remain_pos]
-            curve_path = osp.join(save_file_path, 'C_alpha', 'curve.svg')
-            draw_C_alpha_curve(C_list, alphas, curve_path)
-            bar_path = osp.join(save_file_path, 'C_alpha', 'value', f'{epoch}.svg')
-            draw_bar(C_alpha_list, alphas, bar_path)
-            W = model.layer1.W.clone().cpu().detach().numpy()
-            W_path = osp.join(save_file_path)
-            visualize_W(W, H, L, n-1, W_path, epoch)
-            curve_path = osp.join(save_file_path, 'a', 'curve.svg')
-            draw_a_curve(a_list, curve_path)
     return train_loss_list, val_loss_list
 
 def main():
@@ -172,7 +138,7 @@ def main():
     method_args = f'Full_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}__alpha{alpha}_n-epochs{n_epochs}'
     root_path = './data'
     save_file_path = osp.join(f'./results_paper', dataset, method_args)
-    os.makedirs(save_file_path, exist_ok=True)
+    os.makedirs(osp.join(f'./results_paper'), exist_ok=True)
     # Generate the TwoLayerCausalTransformer
     if low_degree != -1:
         model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree, proj_init=0.001)
@@ -218,7 +184,6 @@ def main():
     degrees = degrees[remain_pos] # only for those exclude X_tilde
     alphas =  [''.join(row.astype(int).astype(str)) for row in degrees]
 
-    plot_begin(model, remain_pos, alphas, H, L, n, save_file_path)
 
 
     train_loss_list, val_loss_list  = train(model, 
@@ -237,7 +202,6 @@ def main():
                                             eval_freq=eval_freq,
                                         )
 
-    plot_end(model, train_loss_list, val_loss_list, remain_pos, alphas, H, L, n, save_file_path)
 
 if __name__ == "__main__":
     main()

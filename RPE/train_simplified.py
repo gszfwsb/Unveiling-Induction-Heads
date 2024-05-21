@@ -80,7 +80,6 @@ def train(
         C_alpha_list = model.layer2.C_alpha_list.data.clone().cpu().detach().numpy()[0]
         C_alpha_list = C_alpha_list[remain_pos]
         C_list.append(C_alpha_list)
-        phase_results["C_list"] = C_list
 
     if train_W:
         param_groups.append({"params": model.layer1.W})
@@ -91,7 +90,6 @@ def train(
         param_groups.append({"params": model.layer2.a})
         a_list = []
         a_list.append(model.layer2.a.item())
-        phase_results["a_list"] = a_list
 
     optimizer = optim.SGD(param_groups, lr=lr, momentum=0, weight_decay=0)
 
@@ -117,7 +115,6 @@ def train(
                 eval_loss += loss.item()
                 pbar.set_description(f"Val loss:{loss.item():.10f}")
             val_loss_list.append(eval_loss / n_val)
-
             if train_a:
                 a_list.append(model.layer2.a.item())
             if train_C:
@@ -131,6 +128,12 @@ def train(
     if train_W:
         W_after = model.layer1.W.clone().cpu().detach().numpy()
         phase_results["W_after"] = W_after
+
+    if train_C:
+        phase_results["C_list"] = C_list
+
+    if train_a:
+        phase_results["a_list"] = a_list
 
     return phase_results
 
