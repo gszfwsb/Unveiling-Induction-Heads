@@ -136,26 +136,27 @@ def train(
 
 
 def main():
-    parser = argparse.ArgumentParser("train 2-layer disentangled Transformer")
-    parser.add_argument("--vocab-size", type=int, default=3)
-    parser.add_argument("--seq-length", type=int, default=100)
-    parser.add_argument("--n-heads", type=int, default=3)
-    parser.add_argument("--lr", action="append", type=float)
-    parser.add_argument("--batch-size", type=int, default=100000)
-    parser.add_argument("--seed", type=int, default=2024)
-    parser.add_argument("--n-sample", type=int, default=10000)
-    parser.add_argument("--device", type=str, default="cuda:3")
-    parser.add_argument("--dataset", type=str, default="NGram")
-    parser.add_argument("--w-plus", type=float, default=1)
-    parser.add_argument("--w-minus", type=float, default=0.01)
-    parser.add_argument("--optim", type=str, default="sgd")
-    parser.add_argument("--a", type=float, default=0.01)
-    parser.add_argument("--c-alpha", type=float, default=1)
-    parser.add_argument("--alpha", type=float, default=0.1)
-    parser.add_argument("--n-epochs", type=int, action="append")
-    parser.add_argument("--n-gram", type=int, default=3)
-    parser.add_argument("--low-degree", type=int, default=3)
-    parser.add_argument("--train-cmd", action="append", type=str)
+    parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
+    parser.add_argument('--vocab-size',type=int,default=3)
+    parser.add_argument('--seq-length',type=int, default=100)
+    parser.add_argument('--n-heads',type=int, default=3)
+    parser.add_argument('--lr', action='append', type=float)
+    parser.add_argument('--batch-size',type=int, default=100000)
+    parser.add_argument('--seed',type=int, default=2024)
+    parser.add_argument('--n-sample',type=int,default=10000)
+    parser.add_argument('--device',type=str, default='cuda:3')
+    parser.add_argument('--dataset',type=str,default='NGram')
+    parser.add_argument('--w-plus',type=float,default=1)
+    parser.add_argument('--w-minus',type=float,default=0.01)
+    parser.add_argument('--optim',type=str,default='sgd')
+    parser.add_argument('--a',type=float,default=0.01)
+    parser.add_argument('--c-alpha',type=float,default=1)
+    parser.add_argument('--alpha',type=float,default=0.1)
+    parser.add_argument('--n-epochs',type=int,action='append')
+    parser.add_argument('--n-gram',type=int,default=3)
+    parser.add_argument('--low-degree',type=int,default=3)
+    parser.add_argument('--train-cmd', action='append', type=str)
+
 
     args = parser.parse_args()
 
@@ -184,14 +185,13 @@ def main():
     # Define the file paths
     assert len(lr_list) == len(train_cmd)
     assert len(train_cmd) == len(n_epochs)
-    char_count = Counter("".join(train_cmd))
-    assert char_count["C"] == 1 and char_count["W"] == 1 and char_count["a"] == 1
-    cmd_args = "_".join(["".join(sorted(s)) for s in train_cmd])
-    lr_args = "_".join(str(_) for _ in lr_list)
-    method_args = f"{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}"
-    root_path = "./data"
-    save_file_path = osp.join(f"./results_paper", dataset, method_args)
-    os.makedirs(osp.join(f"./results_paper", dataset), exist_ok=True)
+    char_count = Counter(''.join(train_cmd))
+    assert char_count['C'] == 1 and char_count['W'] == 1 and char_count['a'] == 1
+    cmd_args = '_'.join([''.join(sorted(s)) for s in train_cmd])
+    lr_args = '_'.join(str(_) for _ in lr_list)
+    method_args = f'{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
+    root_path = './data'
+    save_file_path = osp.join(f'./results_paper', dataset, method_args)
     # Generate the TwoLayerCausalTransformer
     if low_degree != -1:
         model = SimplifiedTwoLayerTransformer(
