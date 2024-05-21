@@ -28,13 +28,8 @@ def train(model,
         n_val,
         n_epochs,
         device,
-        H,
-        L,
-        n,
         criterion, 
         lr,
-        save_file_path,
-        eval_freq=500,
         ):
     
     ########################### begin ###########################
@@ -50,8 +45,6 @@ def train(model,
     a_list.append(model.layer2.a.item())
     ############################################################
     phase_results = {}
-    phase_results["C_list"] = C_list
-    phase_results["a_list"] = a_list
     W_before = model.layer1.W.clone().cpu().detach().numpy()
     phase_results["W_before"] = W_before
     train_loss_list, val_loss_list = [], []
@@ -85,8 +78,13 @@ def train(model,
             C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
             C_alpha_list = C_alpha_list[remain_pos]
             C_list.append(C_alpha_list)
-            
-    return train_loss_list, val_loss_list
+    phase_results["C_list"] = C_list
+    phase_results["a_list"] = a_list
+    W_after = model.layer1.W.clone().cpu().detach().numpy()
+    phase_results["W_after"] = W_after
+    phase_results[f"train_loss_list"] = train_loss_list
+    phase_results[f"val_loss_list"] = val_loss_list
+    return phase_results
 
 def main():
     parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
@@ -135,23 +133,24 @@ def main():
     low_degree = args.low_degree
     # d_mlp = args.d_mlp
     # Define the file paths
-    method_args = f'Full_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}__alpha{alpha}_n-epochs{n_epochs}'
+    method_args = f'Full_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_alpha{alpha}_n-epochs{n_epochs}'
     root_path = './data'
     save_file_path = osp.join(f'./results_paper', dataset, method_args)
     os.makedirs(osp.join(f'./results_paper'), exist_ok=True)
     # Generate the TwoLayerCausalTransformer
+    q_k_o_v_list = [False, True]
     if low_degree != -1:
-        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree, proj_init=0.001)
+        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree, proj_init=0.001, q_k_o_v_list = q_k_o_v_list)
     else:
-        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, proj_init=0.001)
+        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, proj_init=0.001, q_k_o_v_list=q_k_o_v_list)
     model.to(device)
 
 
     criterion = population_loss(ignore_idx)
     if dataset == 'Markov':
-        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_alpha{alpha}_{n_sample}')
+        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_alpha{alpha}')
     else:
-        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_n{n}_alpha{alpha}_{n_sample}')
+        data_path = osp.join(root_path, dataset, f'vocab{S}_seq{L}_n{n}_alpha{alpha}')
     os.makedirs(data_path, exist_ok=True)
     n_train, n_val = int(n_sample * 0.9), int(n_sample * 0.1)
 
@@ -175,7 +174,6 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=False)
 
-    eval_freq = min(n_epochs//10, 500)
 
 
 
@@ -186,22 +184,18 @@ def main():
 
 
 
-    train_loss_list, val_loss_list  = train(model, 
-                                            train_loader, 
-                                            val_loader, 
-                                            n_train, 
-                                            n_val,
-                                            n_epochs,
-                                            device,
-                                            H,
-                                            L,
-                                            n,
-                                            criterion, 
-                                            lr,
-                                            save_file_path,
-                                            eval_freq=eval_freq,
-                                        )
-
+    results  = train(model, 
+                    train_loader, 
+                    val_loader, 
+                    n_train, 
+                    n_val,
+                    n_epochs,
+                    device,
+                    criterion, 
+                    lr
+                    )
+    results["alphas"] = alphas
+    np.savez(save_file_path, **results)
 
 if __name__ == "__main__":
     main()

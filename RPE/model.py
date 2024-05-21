@@ -599,25 +599,33 @@ class SimplifiedTwoLayerTransformer(nn.Module):
 
 
 class RPEAttention(nn.Module):
-    def __init__(self, d, T, n_parent, H, w_plus, w_minus, proj_init=0.001):
+    def __init__(self, d, T, n_parent, H, w_plus, w_minus, q_k_o_v_list=[False, True], proj_init=0.001):
         super(RPEAttention, self).__init__()
         self.d = d
         self.T = T
         self.H = H
-        self.W = torch.ones((self.T,self.H)) * w_minus
+        self.W = torch.ones((self.T, self.H)) * w_minus
         torch.diagonal(self.W, 0).fill_(w_plus)
         self.W = nn.Parameter(self.W)
+        
         self.q_k_proj = torch.zeros(d, d, H)
         self.q_k_proj[torch.arange(d), torch.arange(d)] = proj_init
+        if q_k_o_v_list[0]:
+            self.q_k_proj = nn.Parameter(self.q_k_proj)
+        
         self.o_v_proj = torch.zeros(d, d, H)
         self.o_v_proj[torch.arange(d), torch.arange(d)] = proj_init
-        self.q_k_proj = nn.Parameter(self.q_k_proj)
-        self.o_v_proj = nn.Parameter(self.o_v_proj)
-        
+        if q_k_o_v_list[1]:
+            self.o_v_proj = nn.Parameter(self.o_v_proj)
+        self.q_k_o_v_list = q_k_o_v_list
         self.norm = nn.LayerNorm(d)
-                
+
     def forward(self, X):
         # X: [bs, T, d]
+        if not self.q_k_o_v_list[0]:
+            self.q_k_proj = self.q_k_proj.to(X.device)
+        if not self.q_k_o_v_list[1]:
+            self.o_v_proj = self.o_v_proj.to(X.device)
         X_tilde = torch.cat([X, torch.zeros_like(X[..., :1, :], device=X.device)], dim=-2) # [bs, T+1, d]
         V = X_tilde.clone()
         for h in range(self.H):
@@ -632,7 +640,6 @@ class RPEAttention(nn.Module):
             V = torch.cat([V, v_h.clone()], dim=-1)
         V = V.to(X.device) # [bs, (T+1), (H+1)*d]
         return V
-
 class TwoLayerTransformer(nn.Module):
     def __init__(self, 
                 vocab_size,
@@ -644,7 +651,8 @@ class TwoLayerTransformer(nn.Module):
                 c_alpha_init,
                 n_parent,
                 low_degree=-1,
-                proj_init=0.001):
+                proj_init=0.001,
+                q_k_o_v_list=[False, True]):
         super(TwoLayerTransformer, self).__init__()
         self.T = seq_length
         self.H = num_heads
@@ -658,7 +666,8 @@ class TwoLayerTransformer(nn.Module):
             H=self.H, 
             w_plus=w_plus, 
             w_minus=w_minus,
-            proj_init=proj_init
+            proj_init=proj_init,
+            q_k_o_v_list=[False, True],
         )
         # layer 2: attention
         self.layer2 = PolyKernelMultiHeadAttention(
