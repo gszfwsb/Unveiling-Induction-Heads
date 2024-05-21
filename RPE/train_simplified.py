@@ -48,7 +48,7 @@ def combine_and_save_results(file_path, results):
             if key not in combined_results:
                 combined_results[key] = []
             combined_results[key].extend(value if isinstance(value, list) else [value])
-    
+    print(combined_results.keys())
     save_params(file_path, combined_results)
 
 
@@ -190,7 +190,6 @@ def main():
     method_args = f'{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
     root_path = './data'
     save_file_path = osp.join(f'./results_paper', dataset, method_args)
-    os.makedirs(save_file_path, exist_ok=True)
     # Generate the TwoLayerCausalTransformer
     if low_degree != -1:
         model = SimplifiedTwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree)
@@ -262,9 +261,9 @@ def main():
                             train_a=train_a,
                         )
         results.append(phase_results)
-        print(phase_results.keys())
         
-
+    # also add alphas to the results
+    results[0]['alphas'] = alphas
     combine_and_save_results(save_file_path, results)
 
 if __name__ == "__main__":
