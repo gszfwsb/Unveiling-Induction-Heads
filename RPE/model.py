@@ -667,7 +667,7 @@ class TwoLayerTransformer(nn.Module):
             w_plus=w_plus, 
             w_minus=w_minus,
             proj_init=proj_init,
-            q_k_o_v_list=[False, True],
+            q_k_o_v_list=q_k_o_v_list,
         )
         # layer 2: attention
         self.layer2 = PolyKernelMultiHeadAttention(

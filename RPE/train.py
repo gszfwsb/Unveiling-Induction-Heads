@@ -106,6 +106,7 @@ def main():
     parser.add_argument('--n-epochs',type=int,default=10000)
     parser.add_argument('--n-gram',type=int,default=3)
     parser.add_argument('--low-degree',type=int,default=-1)
+    parser.add_argument('--q-k-o-v-list',type=list,default=[True,True])
 
 
     args = parser.parse_args()
@@ -133,12 +134,13 @@ def main():
     low_degree = args.low_degree
     # d_mlp = args.d_mlp
     # Define the file paths
-    method_args = f'Full_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_alpha{alpha}_n-epochs{n_epochs}'
+    q_k_o_v_list = args.q_k_o_v_list
+    method_args = f'Full_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_alpha{alpha}_n-epochs{n_epochs}_{q_k_o_v_list}'
     root_path = './data'
     save_file_path = osp.join(f'./results_paper', dataset, method_args)
     os.makedirs(osp.join(f'./results_paper'), exist_ok=True)
     # Generate the TwoLayerCausalTransformer
-    q_k_o_v_list = [False, True]
+    
     if low_degree != -1:
         model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree, proj_init=0.001, q_k_o_v_list = q_k_o_v_list)
     else:
