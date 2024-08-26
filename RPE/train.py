@@ -17,7 +17,10 @@ import numpy as np
 from RPE.utils import *
 from RPE.model import TwoLayerTransformer
 
+# add a time stamp to the file name
+import time
 
+current_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
 
 
 
@@ -107,13 +110,13 @@ def main():
     parser.add_argument('--n-sample',type=int,default=10000)
     parser.add_argument('--device',type=str, default='cuda')
     parser.add_argument('--dataset',type=str,default='NGram')
-    parser.add_argument('--w-plus',type=float,default=1.0)
+    parser.add_argument('--w-plus',type=float,default=3.0)
     parser.add_argument('--w-minus',type=float,default=0.01)
     parser.add_argument('--optim',type=str,default='sgd')
     parser.add_argument('--a',type=float,default=0.01)
     parser.add_argument('--c-alpha',type=float,default=0.01)
     parser.add_argument('--alpha',type=float,default=0.1)
-    parser.add_argument('--n-epochs',type=int,default=20000)
+    parser.add_argument('--n-epochs',type=int,default=50000)
     parser.add_argument('--n-gram',type=int,default=3)
     parser.add_argument('--low-degree',type=int,default=2)
     parser.add_argument('--q-k-o-v-list',type=list,default=[True,True])
@@ -145,7 +148,7 @@ def main():
     # d_mlp = args.d_mlp
     # Define the file paths
     q_k_o_v_list = args.q_k_o_v_list
-    method_args = f'Full_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_alpha{alpha}_n-epochs{n_epochs}_{q_k_o_v_list}'
+    method_args = f'Full_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_lr{lr}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_alpha{alpha}_n-epochs{n_epochs}_{q_k_o_v_list}_seed{args.seed}_{current_time}'
     root_path = './data'
     save_file_path = osp.join(f'./results_paper', dataset, method_args)
     os.makedirs(osp.join(f'./results_paper'), exist_ok=True)
