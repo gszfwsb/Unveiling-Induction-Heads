@@ -33,6 +33,7 @@ def train(model,
         device,
         criterion, 
         lr,
+        save_file_path,
         ):
     
     ########################### begin ###########################
@@ -88,15 +89,18 @@ def train(model,
             W_K_list.append(model.layer1.k_proj.data.cpu().detach().numpy())
             W_Q_list.append(model.layer1.q_proj.data.cpu().detach().numpy())
             W_V_list.append(model.layer1.o_v_proj.data.cpu().detach().numpy())
-    phase_results["C_list"] = C_list
-    phase_results["a_list"] = a_list
-    W_after = model.layer1.W.clone().cpu().detach().numpy()
-    phase_results["W_after"] = W_after
-    phase_results[f"train_loss_list"] = train_loss_list
-    phase_results[f"val_loss_list"] = val_loss_list
-    phase_results["W_K"] = model.layer1.k_proj.data.cpu().detach().numpy()
-    phase_results["W_Q"] = model.layer1.q_proj.data.cpu().detach().numpy()
-    phase_results["W_V"] = model.layer1.o_v_proj.data.cpu().detach().numpy()
+        if epoch % 5000 == 0:
+            phase_results["C_list"] = C_list
+            phase_results["a_list"] = a_list
+            W_after = model.layer1.W.clone().cpu().detach().numpy()
+            phase_results["W_after"] = W_after
+            phase_results[f"train_loss_list"] = train_loss_list
+            phase_results[f"val_loss_list"] = val_loss_list
+            phase_results["W_K"] = model.layer1.k_proj.data.cpu().detach().numpy()
+            phase_results["W_Q"] = model.layer1.q_proj.data.cpu().detach().numpy()
+            phase_results["W_V"] = model.layer1.o_v_proj.data.cpu().detach().numpy()
+            phase_results["alphas"] = alphas
+            np.savez(save_file_path, **phase_results)
     return phase_results
 
 def main():
@@ -207,7 +211,8 @@ def main():
                     n_epochs,
                     device,
                     criterion, 
-                    lr
+                    lr, 
+                    save_file_path
                     )
     results["alphas"] = alphas
     np.savez(save_file_path, **results)
