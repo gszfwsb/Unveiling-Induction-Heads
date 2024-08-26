@@ -113,7 +113,7 @@ def main():
     parser.add_argument('--a',type=float,default=0.01)
     parser.add_argument('--c-alpha',type=float,default=0.01)
     parser.add_argument('--alpha',type=float,default=0.1)
-    parser.add_argument('--n-epochs',type=int,default=10000)
+    parser.add_argument('--n-epochs',type=int,default=20000)
     parser.add_argument('--n-gram',type=int,default=3)
     parser.add_argument('--low-degree',type=int,default=2)
     parser.add_argument('--q-k-o-v-list',type=list,default=[True,True])
@@ -152,9 +152,9 @@ def main():
     # Generate the TwoLayerCausalTransformer
     
     if low_degree != -1:
-        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree, proj_init=0.001, q_k_o_v_list = q_k_o_v_list)
+        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, low_degree, proj_init=0.01, q_k_o_v_list = q_k_o_v_list)
     else:
-        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, proj_init=0.001, q_k_o_v_list=q_k_o_v_list)
+        model = TwoLayerTransformer(S, L, H, w_plus, w_minus, a_init, c_alpha_init, n-1, proj_init=0.01, q_k_o_v_list=q_k_o_v_list)
     model.to(device)
 
 

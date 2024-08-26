@@ -429,6 +429,7 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
                  dimension: int,
                  max_individual_degree: int = 2, 
                  init_method: Literal["normal", "zero", "ones"] = "zero", 
+                 standard_LN: bool = False, 
                     **kwargs
                  ):
         """
