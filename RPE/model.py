@@ -513,6 +513,7 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
         logits_shift = torch.exp(torch.einsum("bqsc,lc->bqsl", torch.log(logits_shift + 1e-24), self.degrees.to(logits_shift.device))) # [batch_size, query_len, seq_len, num_components ** max_individual_degree]
         logits_shift = torch.einsum("bqsl,hl->bhqs", logits_shift, self.C_alpha_list ** 2) # [batch_size, num_heads, query_len, seq_len]
         logits_shift = logits_shift / self.C_alpha_list[:,self.remain_pos].norm(dim=-1, keepdim=True) ** 2
+        # logits_shift = logits_shift / self.C_alpha_list.norm(dim=-1, keepdim=True) ** 2
         # layer normalization
         o, _ = super().forward(query, torch.zeros_like(key, device=key.device), value, logits_shift=logits_shift * self.a)
         return o.squeeze(1)
@@ -608,10 +609,13 @@ class RPEAttention(nn.Module):
         torch.diagonal(self.W, 0).fill_(w_plus)
         self.W = nn.Parameter(self.W)
         
-        self.q_k_proj = torch.zeros(d, d, H)
-        self.q_k_proj[torch.arange(d), torch.arange(d)] = proj_init
+        self.k_proj = torch.zeros(d, d, H)
+        self.q_proj = torch.zeros(d, d, H)
+        self.k_proj[torch.arange(d), torch.arange(d)] = proj_init
+        self.q_proj[torch.arange(d), torch.arange(d)] = proj_init
         if q_k_o_v_list[0]:
-            self.q_k_proj = nn.Parameter(self.q_k_proj)
+            self.q_proj = nn.Parameter(self.q_proj)
+            self.k_proj = nn.Parameter(self.k_proj)
         
         self.o_v_proj = torch.zeros(d, d, H)
         self.o_v_proj[torch.arange(d), torch.arange(d)] = proj_init
@@ -622,6 +626,7 @@ class RPEAttention(nn.Module):
 
     def forward(self, X):
         # X: [bs, T, d]
+        self.q_k_proj = torch.einsum('ijh,kjh->ikh', self.q_proj, self.k_proj)
         if not self.q_k_o_v_list[0]:
             self.q_k_proj = self.q_k_proj.to(X.device)
         if not self.q_k_o_v_list[1]:
@@ -632,9 +637,10 @@ class RPEAttention(nn.Module):
             W_h = torch.full((self.T+1, self.T+1), float('-inf'), device=X.device) # [T+1, T+1]
             for j in range(self.H):
                 torch.diagonal(W_h, -(j+h+1)).fill_(self.W[:, h][j+h])  # Set the (j)-th negative diagonal
+            torch.diagonal(W_h, 0).fill_(1e-6)
             attn1 = torch.matmul(torch.matmul(X_tilde, self.q_k_proj[:,:,h]), X_tilde.permute(0,2,1)) + W_h # [T+1, d] [d, d] [d, T+1] + [T+1, T+1] -> [T+1, T+1]
             attn1 = F.softmax(attn1, dim=-1) # [T+1, T+1]
-            attn1 = torch.nan_to_num(attn1, nan=0.0)  # Safely convert NaNs to zero after softmax
+            # attn1 = torch.nan_to_num(attn1, nan=0.0)  # Safely convert NaNs to zero after softmax
             v_h = torch.matmul(torch.matmul(attn1, X_tilde), self.o_v_proj[:,:,h]) # [T+1, T+1] [bs, T+1, d] [d,d]-> [bs, T+1, d]
             v_h = self.norm(v_h)
             V = torch.cat([V, v_h.clone()], dim=-1)

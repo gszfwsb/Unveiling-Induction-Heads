@@ -15,8 +15,12 @@ from dataset import MarkovDataset, NGramDataset
 from tools import makedirs, set_seed
 import argparse
 import numpy as np
-from RPE.utils import *
-from RPE.model import SimplifiedTwoLayerTransformer
+
+# adding Folder_2/subfolder to the system path
+# parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir))
+
+from utils import *
+from model import SimplifiedTwoLayerTransformer
 from collections import Counter
 
 
@@ -92,7 +96,7 @@ def test(
         a_list = []
         a_list.append(model.layer2.a.item())
 
-    optimizer = optim.SGD(param_groups, lr=lr, momentum=0, weight_decay=0)
+    # optimizer = optim.SGD(param_groups, lr=lr, momentum=0, weight_decay=0)
 
     for epoch in pbar:
         model.train()
@@ -123,8 +127,8 @@ def test(
                 C_alpha_list = C_alpha_list[remain_pos]
                 C_list.append(C_alpha_list)
 
-    phase_results[f"train_loss_list_{phase}"] = train_loss_list
-    phase_results[f"val_loss_list_{phase}"] = val_loss_list
+    # phase_results[f"train_loss_list_{phase}"] = train_loss_list
+    # phase_results[f"val_loss_list_{phase}"] = val_loss_list
 
     # if train_W:
     #     W_after = model.layer1.W.clone().cpu().detach().numpy()
@@ -136,10 +140,10 @@ def test(
     # if train_a:
     #     phase_results["a_list"] = a_list
 
-    return phase_results
+    return eval_loss / n_val
 
 
-def main():
+def main(alpha = None, seq_len = None):
     parser = argparse.ArgumentParser('train 2-layer disentangled Transformer')
     parser.add_argument('--vocab-size',type=int,default=3)
     parser.add_argument('--seq-length',type=int, default=100)
@@ -168,35 +172,35 @@ def main():
     device = args.device
     # model setting
     S = args.vocab_size
-    L = args.seq_length
+    L = args.seq_length if seq_len is None else seq_len
     H = args.n_heads
     a_init = args.a
     # training setting
     bs = args.batch_size
     n_sample = args.n_sample
-    lr_list = args.lr
+    # lr_list = args.lr if args.lr is not None else 1.0
     dataset = args.dataset
     optim_method = args.optim
     n_epochs = args.n_epochs
-    alpha = args.alpha
+    alpha = args.alpha if alpha is None else alpha
     ignore_idx = -100
     n = args.n_gram
     c_alpha_init = args.c_alpha
     w_plus = args.w_plus
     w_minus = args.w_minus
     low_degree = args.low_degree
-    train_cmd = args.train_cmd
+    # train_cmd = 'CWa'
     # Define the file paths
-    assert len(lr_list) == len(train_cmd)
-    assert len(train_cmd) == len(n_epochs)
-    char_count = Counter(''.join(train_cmd))
-    assert char_count['C'] == 1 and char_count['W'] == 1 and char_count['a'] == 1
-    cmd_args = '_'.join([''.join(sorted(s)) for s in train_cmd])
-    lr_args = '_'.join(str(_) for _ in lr_list)
-    method_args = f'{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
+    # assert len(lr_list) == len(train_cmd)
+    # assert len(train_cmd) == len(n_epochs)
+    # char_count = Counter(''.join(train_cmd))
+    # assert char_count['C'] == 1 and char_count['W'] == 1 and char_count['a'] == 1
+    # cmd_args = '_'.join([''.join(sorted(s)) for s in train_cmd])
+    # lr_args = '_'.join(str(_) for _ in lr_list)
+    # method_args = f'{cmd_args}_parent{n-1}_n{n_sample}_L{L}_S{S}_H{H}_{lr_args}_opt{optim_method}_w+{w_plus}_w-{w_minus}_D{low_degree}_c_alpha_init{c_alpha_init}_a_init{a_init}_alpha{alpha}_n-epochs{n_epochs}'
     root_path = './data'
-    save_file_path = osp.join(f'./results_paper', dataset, method_args)
-    os.makedirs(osp.join(f'./results_paper', dataset), exist_ok=True)
+    # save_file_path = osp.join(f'./results_paper', dataset, method_args)
+    # os.makedirs(osp.join(f'./results_paper', dataset), exist_ok=True)
     # Generate the TwoLayerCausalTransformer
     if low_degree != -1:
         model = SimplifiedTwoLayerTransformer(
@@ -211,10 +215,16 @@ def main():
     
     # load model parameters
     # load saved model from save_file_path that is saved by np.savez
-    ckpt = np.load(save_file_path)[-1]
-    model.layer1.W.data = torch.tensor(ckpt["W_after"]).to(device)
-    model.layer2.C_alpha_list.data = torch.tensor(ckpt["C_list"]).to(device)
-    model.layer2.a = torch.tensor(ckpt["a_list"]).to(device)
+    
+    ckpt = np.load("results_paper/NGram/CW_a_parent2_n10000_L100_S3_H3_1.0_1.0_optsgd_w+3.0_w-0.1_D2_c_alpha_init0.01_a_init0.01_alpha0.1_n-epochs[500000, 5000].npz")
+    # assert model.layer1.W.data.shape == torch.tensor(ckpt["W_after"], dtype=model.layer1.W.data.dtype).squeeze().shape
+    model.layer1.W.data[:(2 * H)] = torch.tensor(ckpt["W_after"]).squeeze(0).to(device)[:(2 * H)]
+    
+    degrees = model.layer2.degrees.data.clone().cpu().detach().numpy()
+    remain_pos = np.where(degrees[:, 0] == 0)[0]
+    assert model.layer2.C_alpha_list.data[:, remain_pos].shape == torch.tensor(ckpt["C_list"][-1:]).shape
+    model.layer2.C_alpha_list.data[:, remain_pos] = torch.tensor(ckpt["C_list"][-1:], dtype=model.layer2.C_alpha_list.data.dtype).to(device)
+    model.layer2.a.data = torch.tensor([ckpt["a_list"][-1]], dtype=model.layer2.a.data.dtype).to(device)
 
     criterion = population_loss(ignore_idx)
     if dataset == "Markov":
@@ -243,9 +253,10 @@ def main():
         torch.save(train_dataset, train_set_path)
         torch.save(val_dataset, val_set_path)
 
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=bs, shuffle=True
-    )
+    # train_loader = torch.utils.data.DataLoader(
+    #     train_dataset, batch_size=bs, shuffle=True
+    # )
+    train_loader = None
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, shuffle=False)
 
     degrees = model.layer2.degrees.data.clone().cpu().detach().numpy()
@@ -254,35 +265,44 @@ def main():
     alphas = ["".join(row.astype(int).astype(str)) for row in degrees]
     print(alphas)
 
-    train_flags = generate_train_flags(train_cmd)
+    # train_flags = generate_train_flags(train_cmd)
 
-    print(train_flags)
+    # print(train_flags)
     results = []
-    for phase, train_flag in enumerate(train_flags):
-        train_C, train_W, train_a = train_flag[0], train_flag[1], train_flag[2]
-        phase_results = test(
-            model,
-            train_loader,
-            val_loader,
-            n_train,
-            n_val,
-            n_epochs[phase],
-            device,
-            remain_pos,
-            criterion,
-            lr_list[phase],
-            phase + 1,
-            train_C=train_C,
-            train_W=train_W,
-            train_a=train_a,
-        )
-        results.append(phase_results)
+    # for phase, train_flag in enumerate(train_flags):
+        # train_C, train_W, train_a = train_flag[0], train_flag[1], train_flag[2]
+    phase_results = test(
+        model,
+        train_loader,
+        val_loader,
+        n_train,
+        n_val,
+        1,
+        device,
+        remain_pos,
+        criterion,
+        1, 
+        None,
+        train_C=None,
+        train_W=None,
+        train_a=None,
+    )
+    # results.append(phase_results)
 
     # also add alphas to the results
-    results[0]["alphas"] = alphas
+    # results[0]["alphas"] = alphas
     # combine_and_save_results(save_file_path, results)
-    print(results)
+    print(phase_results)
+    return phase_results
 
 
 if __name__ == "__main__":
-    main()
+    # seq_len_ls = [10, 20, 50, 100, 200, 400]
+    seq_len_ls = [100]
+    var_loss_ls = []
+    for seq_len in seq_len_ls:
+        print(f"seq_len={seq_len}")
+        var_loss = main(alpha = 0.05, seq_len=seq_len)
+        var_loss_ls.append(var_loss)
+    
+    # do visualization of seq_len_ls and var_loss_ls

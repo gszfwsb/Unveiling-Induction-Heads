@@ -43,6 +43,10 @@ def train(model,
     C_list.append(C_alpha_list)
     a_list = []
     a_list.append(model.layer2.a.item())
+
+    W_Q_list = []
+    W_K_list = []
+    W_V_list = []
     ############################################################
     phase_results = {}
     W_before = model.layer1.W.clone().cpu().detach().numpy()
@@ -78,12 +82,18 @@ def train(model,
             C_alpha_list = model.layer2.C_alpha_list.data.cpu().detach().numpy()[0]
             C_alpha_list = C_alpha_list[remain_pos]
             C_list.append(C_alpha_list)
+            W_K_list.append(model.layer1.k_proj.data.cpu().detach().numpy())
+            W_Q_list.append(model.layer1.q_proj.data.cpu().detach().numpy())
+            W_V_list.append(model.layer1.o_v_proj.data.cpu().detach().numpy())
     phase_results["C_list"] = C_list
     phase_results["a_list"] = a_list
     W_after = model.layer1.W.clone().cpu().detach().numpy()
     phase_results["W_after"] = W_after
     phase_results[f"train_loss_list"] = train_loss_list
     phase_results[f"val_loss_list"] = val_loss_list
+    phase_results["W_K"] = model.layer1.k_proj.data.cpu().detach().numpy()
+    phase_results["W_Q"] = model.layer1.q_proj.data.cpu().detach().numpy()
+    phase_results["W_V"] = model.layer1.o_v_proj.data.cpu().detach().numpy()
     return phase_results
 
 def main():
@@ -91,13 +101,13 @@ def main():
     parser.add_argument('--vocab-size',type=int,default=3)
     parser.add_argument('--seq-length',type=int, default=100)
     parser.add_argument('--n-heads',type=int, default=3)
-    parser.add_argument('--lr', default=1, type=float)
+    parser.add_argument('--lr', default=0.001, type=float)
     parser.add_argument('--batch-size',type=int, default=100000)
     parser.add_argument('--seed',type=int, default=2024)
     parser.add_argument('--n-sample',type=int,default=10000)
-    parser.add_argument('--device',type=str, default='cuda:3')
+    parser.add_argument('--device',type=str, default='cuda')
     parser.add_argument('--dataset',type=str,default='NGram')
-    parser.add_argument('--w-plus',type=float,default=1)
+    parser.add_argument('--w-plus',type=float,default=1.0)
     parser.add_argument('--w-minus',type=float,default=0.01)
     parser.add_argument('--optim',type=str,default='sgd')
     parser.add_argument('--a',type=float,default=0.01)
@@ -105,7 +115,7 @@ def main():
     parser.add_argument('--alpha',type=float,default=0.1)
     parser.add_argument('--n-epochs',type=int,default=10000)
     parser.add_argument('--n-gram',type=int,default=3)
-    parser.add_argument('--low-degree',type=int,default=-1)
+    parser.add_argument('--low-degree',type=int,default=2)
     parser.add_argument('--q-k-o-v-list',type=list,default=[True,True])
 
 
