@@ -451,7 +451,7 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
         )
         self.max_individual_degree = max_individual_degree
         self.num_components = num_components
-
+        self.standard_LN = standard_LN
         # initialize the C_alpha_list
         if init_method == "normal":
             self.C_alpha_list = nn.Parameter(torch.randn(num_heads, (max_individual_degree + 1) ** num_components)) 
@@ -509,15 +509,32 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
         assert q_dim % self.num_components == 0
         key_new = key.view(batch_size, seq_len, self.num_components, -1)
         query_new = query.view(batch_size, query_len, self.num_components, -1)
-        logits_shift = torch.einsum("bqcd,bscd->bqsc", query_new, key_new) # [batch_size, query_len, seq_len, num_components]
-        logits_shift = F.relu(logits_shift) # add here to avoid negative values
-        logits_shift = torch.exp(torch.einsum("bqsc,lc->bqsl", torch.log(logits_shift + 1e-24), self.degrees.to(logits_shift.device))) # [batch_size, query_len, seq_len, num_components ** max_individual_degree]
-        logits_shift = torch.einsum("bqsl,hl->bhqs", logits_shift, self.C_alpha_list ** 2) # [batch_size, num_heads, query_len, seq_len]
-        logits_shift = logits_shift / self.C_alpha_list[:,self.remain_pos].norm(dim=-1, keepdim=True) ** 2
+        
+        logits_shift = self.__feature_inner_prod__(query_new, key_new) # [batch_size, num_heads, query_len, seq_len]
+        norm_key = torch.sqrt(self.__feature_norm_prod__(key_new)) # [batch_size, num_heads, seq_len]
+        norm_query = torch.sqrt(self.__feature_norm_prod__(query_new)) # [batch_size, num_heads, query_len]
+
+        if self.standard_LN:
+            logits_shift = logits_shift / torch.einsum('bhq,bhk->bhqk', norm_query, norm_key).clamp(min=1e-6)
+        else:
+            logits_shift = logits_shift / self.C_alpha_list[:,self.remain_pos].norm(dim=-1, keepdim=True) ** 2
         # logits_shift = logits_shift / self.C_alpha_list.norm(dim=-1, keepdim=True) ** 2
         # layer normalization
         o, _ = super().forward(query, torch.zeros_like(key, device=key.device), value, logits_shift=logits_shift * self.a)
         return o.squeeze(1)
+    
+    def __feature_inner_prod__(self, query_new, key_new):
+        x = torch.einsum("bqcd,bscd->bqsc", query_new, key_new) # [batch_size, query_len, seq_len, num_components]
+        x = F.relu(x) # add here to avoid negative values
+        x = torch.exp(torch.einsum("bqsc,lc->bqsl", torch.log(x + 1e-24), self.degrees.to(x.device))) # [batch_size, query_len, seq_len, num_components ** max_individual_degree]
+        x = torch.einsum("bqsl,hl->bhqs", x, self.C_alpha_list ** 2) # [batch_size, num_heads, query_len, seq_len]
+        return x
+
+    def __feature_norm_prod__(self, query_new):
+        x = torch.einsum("bqcd,bqcd->bqc", query_new, query_new) # [batch_size, query_len, num_components]
+        x = torch.exp(torch.einsum("bqc,lc->bql", torch.log(x + 1e-24), self.degrees.to(x.device))) # [batch_size, query_len, num_components ** max_individual_degree]
+        x = torch.einsum("bql,hl->bhq", x, self.C_alpha_list ** 2) # [batch_size, num_heads, query_len]
+        return x
 
 class SimplifiedLayerNorm(nn.Module):
     def __init__(self, dim=-1, eps=1e-7):
@@ -685,7 +702,8 @@ class TwoLayerTransformer(nn.Module):
             init_method="ones",
             a = "learnable",
             a_init = a_init,
-            low_degree = low_degree
+            low_degree = low_degree, 
+            standard_LN=True, 
         )
         # init params
         self.layer2.C_alpha_list.data = torch.ones_like(self.layer2.C_alpha_list.data) * c_alpha_init
