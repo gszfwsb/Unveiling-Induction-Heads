@@ -511,10 +511,10 @@ class PolyKernelMultiHeadAttention(MultiHeadAttention):
         query_new = query.view(batch_size, query_len, self.num_components, -1)
         
         logits_shift = self.__feature_inner_prod__(query_new, key_new) # [batch_size, num_heads, query_len, seq_len]
-        norm_key = torch.sqrt(self.__feature_norm_prod__(key_new)) # [batch_size, num_heads, seq_len]
-        norm_query = torch.sqrt(self.__feature_norm_prod__(query_new)) # [batch_size, num_heads, query_len]
-
+        
         if self.standard_LN:
+            norm_key = torch.sqrt(self.__feature_norm_prod__(key_new)) # [batch_size, num_heads, seq_len]
+            norm_query = torch.sqrt(self.__feature_norm_prod__(query_new)) # [batch_size, num_heads, query_len]
             logits_shift = logits_shift / torch.einsum('bhq,bhk->bhqk', norm_query, norm_key).clamp(min=1e-6)
         else:
             logits_shift = logits_shift / self.C_alpha_list[:,self.remain_pos].norm(dim=-1, keepdim=True) ** 2
@@ -636,7 +636,7 @@ class RPEAttention(nn.Module):
             self.k_proj = nn.Parameter(self.k_proj)
         
         self.o_v_proj = torch.zeros(d, d, H)
-        self.o_v_proj[torch.arange(d), torch.arange(d)] = proj_init
+        self.o_v_proj[torch.arange(d), torch.arange(d)] = 1.0
         if q_k_o_v_list[1]:
             self.o_v_proj = nn.Parameter(self.o_v_proj)
         self.q_k_o_v_list = q_k_o_v_list
@@ -703,7 +703,7 @@ class TwoLayerTransformer(nn.Module):
             a = "learnable",
             a_init = a_init,
             low_degree = low_degree, 
-            standard_LN=True, 
+            standard_LN=False, 
         )
         # init params
         self.layer2.C_alpha_list.data = torch.ones_like(self.layer2.C_alpha_list.data) * c_alpha_init
