@@ -114,7 +114,7 @@ def main():
     parser.add_argument('--n-sample',type=int,default=10000)
     parser.add_argument('--device',type=str, default='cuda')
     parser.add_argument('--dataset',type=str,default='NGram')
-    parser.add_argument('--w-plus',type=float,default=3.0)
+    parser.add_argument('--w-plus',type=float,default=1.0)
     parser.add_argument('--w-minus',type=float,default=0.01)
     parser.add_argument('--optim',type=str,default='sgd')
     parser.add_argument('--a',type=float,default=0.01)

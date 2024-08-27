@@ -636,7 +636,7 @@ class RPEAttention(nn.Module):
             self.k_proj = nn.Parameter(self.k_proj)
         
         self.o_v_proj = torch.zeros(d, d, H)
-        self.o_v_proj[torch.arange(d), torch.arange(d)] = 1.0
+        self.o_v_proj[torch.arange(d), torch.arange(d)] = proj_init
         if q_k_o_v_list[1]:
             self.o_v_proj = nn.Parameter(self.o_v_proj)
         self.q_k_o_v_list = q_k_o_v_list
