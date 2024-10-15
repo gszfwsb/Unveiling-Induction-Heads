@@ -1,5 +1,7 @@
-# Run
-## Model B
+# Unveiling Induction Heads: Provable Training Dynamics and Feature Learning in Transformers
+This repository includes codes for paper [Unveiling Induction Heads: Provable Training Dynamics and Feature Learning in Transformers](https://arxiv.org/abs/2409.10559), NeurIPS 2024
+
+## Run the simulation
 The following parameters can be configured to customize the training of the 2-layer disentangled Transformer:
 - vocab-size: Integer, default=3. the size of the vocabulary.
 - seq-length: Integer, default=20. the length of the input sequences.
@@ -22,9 +24,8 @@ The following parameters can be configured to customize the training of the 2-la
 - n-gram: Integer, default=3. the value for parameter 'n_gram'.
 
 ```bash
-# use Relative Positional Encoding
 cd ./RPE
 # To implement the results, try
-python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 # works!!!
-python3 train_independently_model_B_fix_a_first.py --w-plus 0.05 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 # works!!!
-python3 train.py --w-plus 1 --device cuda:2 --n-epochs 5000 --lr 1e2 # works
+python3 train_independently_model_B_fix_a_first.py --w-plus 1 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 
+python3 train_independently_model_B_fix_a_first.py --w-plus 0.05 --device cuda:1 --n-epochs 5000 --lr1 1e2 --lr2 1e3 
+python3 train.py --w-plus 1 --device cuda:2 --n-epochs 5000 --lr 1e2 
