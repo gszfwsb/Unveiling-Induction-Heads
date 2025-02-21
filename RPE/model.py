@@ -423,6 +423,9 @@ class MultiHeadAttention(nn.Module):
         }
 
 class PolyKernelMultiHeadAttention(MultiHeadAttention):
+    """The module combines the FFN and the second attention layer together. The trainable parameters are the C_alpha_list, and the second layer's scalar a.
+        Note that when setting the max_individual_degree to 1, the PolyKernelMultiHeadAttention module is equivalent to an attention layer with identity QK weights. 
+    """
     def __init__(self, 
                  num_heads: int,
                  num_components: int, 
@@ -547,6 +550,9 @@ class SimplifiedLayerNorm(nn.Module):
         return out
 
 class SimplifiedRPEAttention(nn.Module):
+    """ 
+    Simplified RPE Attention module that concatenates the output of all the attention heads.
+    """
     def __init__(self, T, n_parent, H, w_plus, w_minus):
         super(SimplifiedRPEAttention, self).__init__()
         self.T = T
@@ -571,6 +577,11 @@ class SimplifiedRPEAttention(nn.Module):
         return V
 
 class SimplifiedTwoLayerTransformer(nn.Module):
+    """The simplified two-layer transformer model with RPE attention and PolyKernelMultiHeadAttention.
+
+    Args:
+        nn (_type_): _description_
+    """
     def __init__(self, 
                 vocab_size,
                 seq_length,

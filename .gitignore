@@ -15,3 +15,5 @@ RPE/Dataset_Info
 # RPE/results_paper
 RPE/figures
 RPE/figures_paper
+slurm_output/
+__pycache__/
