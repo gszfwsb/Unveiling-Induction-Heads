@@ -26,4 +26,4 @@ cd /gpfs/radev/project/zhuoran_yang/sc3226/Unveiling-Induction-Heads/RPE
 module load miniconda
 conda activate scgpt1
 
-python3 /gpfs/radev/project/zhuoran_yang/sc3226/Unveiling-Induction-Heads/RPE/train_simplified.py 
+python3 /gpfs/radev/project/zhuoran_yang/sc3226/Unveiling-Induction-Heads/RPE/train_simplified.py --vocab-size 3 --seq-length 100 --n-heads 3 --n-gram 3 --w-plus 3 --c-alpha 0.01 --device cuda --n-epochs 50000   --lr 1 --train-cmd CWa --low-degree 2
